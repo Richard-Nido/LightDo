@@ -114,6 +114,11 @@ impl WindowState {
         }
         if inside || self.blocked || self.pinned || !auto_hide {
             self.away_since = None;
+            if self.target == 0.0
+                && (self.progress > 0.0 || self.blocked || self.pinned || !auto_hide)
+            {
+                self.show();
+            }
             return;
         }
         if self.target == 1.0 {
@@ -165,5 +170,17 @@ mod tests {
             s.hide();
             assert_eq!(s.target, if m == Mode::Edge { 0.0 } else { 1.0 });
         }
+    }
+    #[test]
+    fn pointer_return_reverses_closing_without_another_dwell() {
+        let mut s = WindowState::default();
+        s.hide();
+        s.step(80.0, false);
+        let progress = s.progress;
+        s.pointer(100, true, false, 250, 400, true);
+        assert_eq!(s.target, 1.0);
+        assert_eq!(s.progress, progress);
+        s.step(80.0, false);
+        assert_eq!(s.progress, 1.0);
     }
 }

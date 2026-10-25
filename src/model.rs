@@ -118,12 +118,6 @@ impl Model {
         {
             return Err("窗口尺寸数据超出安全范围；原文件已保留".into());
         }
-        if self.settings.mode != Mode::Edge && self.settings.pinned {
-            return Err("固定展开仅适用于边缘面板；原文件已保留".into());
-        }
-        if self.settings.mode != Mode::Floating && self.settings.topmost {
-            return Err("始终置顶仅适用于悬浮窗；原文件已保留".into());
-        }
         if self.settings.hotkey_mod & !0x7 != 0
             || self.settings.hotkey_mod == 0
             || self.settings.hotkey_vk == 0
@@ -243,16 +237,21 @@ mod tests {
         assert!(m.validate().is_err());
     }
     #[test]
-    fn incompatible_mode_settings_are_rejected() {
+    fn inactive_mode_preferences_survive_switches() {
         let mut m = Model::default();
-        m.settings.mode = Mode::Floating;
         m.settings.pinned = true;
-        assert!(m.validate().is_err());
-        m.settings.pinned = false;
-        m.settings.mode = Mode::Edge;
         m.settings.topmost = true;
-        assert!(m.validate().is_err());
-        m.settings.topmost = false;
+        for mode in [Mode::Edge, Mode::Floating, Mode::Desktop] {
+            m.settings.mode = mode;
+            assert!(m.validate().is_ok());
+            let restored: Model =
+                serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+            assert!(restored.validate().is_ok());
+        }
+    }
+    #[test]
+    fn invalid_hotkey_is_rejected() {
+        let mut m = Model::default();
         m.settings.hotkey_mod = 0;
         assert!(m.validate().is_err());
     }
