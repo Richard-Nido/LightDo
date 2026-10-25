@@ -23,6 +23,7 @@
 | 新版 CI 修复后 | [run 40223078172](https://github.com/Richard-Nido/LightDo/actions/runs/40223078172)，提交 d551e7e | PASS：格式、全目标检查、16 项常规测试、x64 构建、固定哈希 NSIS 获取、安装包生成及静默安装生命周期测试 |
 | 最新文档提交 CI | [run 40223515215](https://github.com/Richard-Nido/LightDo/actions/runs/40223515215)，提交 df7ab92 | PASS：文档和诊断入口随主分支检查完成；没有改变 pending 的桌面验收状态 |
 | 最新设置修正 CI | [run 40224724729](https://github.com/Richard-Nido/LightDo/actions/runs/40224724729)，提交 130d4d0 | PASS：设置模式选择通知修正后，完整检查、构建和安装冒烟通过 |
+| 最新模型约束 CI | [run 40225266894](https://github.com/Richard-Nido/LightDo/actions/runs/40225266894)，提交 4e4800d | PASS：持久化模式/置顶/固定展开/快捷键约束及新增测试通过；旧 run 40225240144 的失败来自此前未修正的测试夹具 |
 | 正式发布门槛 | scripts/release.ps1 -CheckOnly，干净工作区 | PASS（正确阻止发布）：本机视觉/模式/安装运行验收仍 pending，脚本返回失败，不创建标签或 Release |
 | 安装器运行中保护 | 开发 EXE 静默安装，隔离测试应用运行中 | PASS：返回 1618，没有安装程序文件，没有强杀进程 |
 | 开发 EXE 生成 | NSIS 3.12、SHA-256 校验的编译器、/WX | 已生成 0.1.0 开发安装包和许可 ZIP，未完成安装/升级/卸载整体验收 |
