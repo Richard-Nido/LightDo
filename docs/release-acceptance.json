@@ -1,0 +1,11 @@
+{
+  "status": "pending",
+  "version": "0.1.0",
+  "sourceFingerprint": null,
+  "glass": false,
+  "windowModes": false,
+  "chineseIme": false,
+  "installer": false,
+  "evidence": "docs/verification.md",
+  "note": "尚未达到正式发布门槛；禁止通过标签发布流程。"
+}

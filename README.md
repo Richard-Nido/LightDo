@@ -4,7 +4,7 @@ Rust + 原生 Windows 的纯本地单清单待办，目标平台 Windows 11 x64�
 
 **正在开发与技术验证中，尚无正式 Release 或可用安装包。** 源码可构建不代表完整产品已通过验收。进度见 [实施清单](docs/implementation-checklist.md)；真实结果见 [验收记录](docs/verification.md)。
 
-当前已实现待办模型、原子存储保护、原生文本输入、实时背景合成与圆角边缘位移，以及边缘/悬浮/桌面窗口层的初步实现。输入法运行证据：
+当前源码包含待办、原子存储保护、原生文本编辑、实时背景玻璃、边缘状态机、悬浮/桌面层级、托盘、设置与安装发布流程；新增行为仍在验收中。输入法的早期基线运行证据：
 
 ![实际拼音候选窗，受控动态网格背景](docs/images/p0-ime-inline.jpg)
 
@@ -21,5 +21,7 @@ cargo run --locked
 ```
 
 右键面板打开模式与外观菜单。`Ctrl+Alt+L` 呼出并输入；双击任务编辑，Enter 提交，Esc 取消。数据位于 `%APPDATA%\LightDo\state.json`；开发验收可用环境变量 `LIGHTDO_DATA_DIR` 指向隔离目录，不会自动读取或修改 QuietDo 数据。
+
+完整开发检查和 EXE 打包入口见 [releasing.md](docs/releasing.md)。正式标签自动发布流程已配置，但本机验收记录仍为 pending，当前不能发布正式版本。桌面会话目前已确认锁定，真实交互验收等待解锁。
 
 架构与来源见 [architecture.md](docs/architecture.md)；许可见 [LICENSE](LICENSE) 和 [第三方声明](THIRD_PARTY_NOTICES.md)。

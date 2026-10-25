@@ -1,3 +1,4 @@
+#requires -Version 7.4
 $ErrorActionPreference = 'Stop'
 $script:ProjectRoot = Split-Path -Parent $PSScriptRoot
 function Find-Cargo {
@@ -10,6 +11,10 @@ function Find-Cargo {
 function Invoke-Checked {
     param([Parameter(Mandatory)][string]$Executable, [Parameter(ValueFromRemainingArguments)][string[]]$Arguments)
     & $Executable @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "命令失败，退出码 ${LASTEXITCODE}：$Executable" }
+    if ($LASTEXITCODE -ne 0) {
+        $failedCode = $LASTEXITCODE
+        [Console]::Error.WriteLine("命令失败，退出码 ${failedCode}：$Executable")
+        exit $failedCode
+    }
 }
 Set-Location -LiteralPath $script:ProjectRoot

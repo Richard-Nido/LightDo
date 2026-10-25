@@ -113,6 +113,11 @@ impl Model {
         {
             return Err("设置值超出范围；原文件已保留".into());
         }
+        if !(320..=1000).contains(&self.settings.width)
+            || !(360..=1600).contains(&self.settings.height)
+        {
+            return Err("窗口尺寸数据超出安全范围；原文件已保留".into());
+        }
         Ok(())
     }
     pub fn add(&mut self, text: &str) -> Option<String> {
@@ -213,6 +218,15 @@ mod tests {
             };
             2
         ];
+        assert!(m.validate().is_err());
+    }
+    #[test]
+    fn unsafe_geometry_cannot_allocate_unbounded_surfaces() {
+        let mut m = Model::default();
+        m.settings.width = i32::MAX;
+        assert!(m.validate().is_err());
+        m.settings.width = 400;
+        m.settings.height = -1;
         assert!(m.validate().is_err());
     }
 }

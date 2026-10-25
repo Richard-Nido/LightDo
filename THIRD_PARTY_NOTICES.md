@@ -6,7 +6,7 @@ LightDo 由 Yuan Haoran (Richard-Nido) 独立开发和发布，不继承上游�
 
 Copyright (c) 2026 lulu-loopp。源码来源：<https://github.com/lulu-loopp/glance>，提交 `ec0fb40de5f4d0a8d8edd1442ad5a4d08bacbee2`。
 
-实际复用：`src/ui/scene.rs`、`src/ui/backdrop.rs`，保留背景缩略图重建、Windows.Graphics.Capture、GPU 纹理交接与相关测试；将跨模块日志及屏幕辅助函数适配到 LightDo。`src/ui/gfx.rs` 的 `displaced` 从 `ui/skins.rs` 的圆角距离场位移算法改编。没有包含 Glance 的业务模块、品牌图标或嵌入字体。
+实际复用：`src/ui/scene.rs`、`src/ui/backdrop.rs`，保留背景缩略图重建、Windows.Graphics.Capture、GPU 纹理交接与相关测试；将跨模块日志及屏幕辅助函数适配到 LightDo。`src/ui/gfx.rs` 的 `displaced` 从 `ui/skins.rs` 的圆角距离场位移算法改编；`src/platform.rs` 的桌面宿主查找和 Z 序维护从 `ui/window.rs` 适配。没有包含 Glance 的业务模块、品牌图标或嵌入字体。
 
 完整许可见 [docs/LICENSE-Glance](docs/LICENSE-Glance)。
 

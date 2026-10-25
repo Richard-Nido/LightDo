@@ -32,6 +32,7 @@ struct Ui {
     owner: HWND,
     font: HFONT,
     settings: Settings,
+    scroll: i32,
 }
 pub fn take() -> Option<Settings> {
     PENDING.with(|p| p.borrow_mut().take())
@@ -49,11 +50,8 @@ pub fn close() {
     }
 }
 pub fn dialog_message(msg: &MSG) -> bool {
-    UI.with(|ui| {
-        ui.borrow()
-            .as_ref()
-            .is_some_and(|ui| unsafe { IsDialogMessageW(ui.hwnd, msg).as_bool() })
-    })
+    let hwnd = UI.with(|ui| ui.borrow().as_ref().map(|ui| ui.hwnd));
+    hwnd.is_some_and(|hwnd| unsafe { IsDialogMessageW(hwnd, msg).as_bool() })
 }
 unsafe fn control(hwnd: HWND, id: i32) -> HWND {
     unsafe { GetDlgItem(Some(hwnd), id).unwrap_or_default() }
@@ -157,6 +155,26 @@ unsafe fn populate(ui: &Ui) {
             c.hotkey_vk as usize | ((flags as usize) << 8),
             0,
         );
+        sync_mode_controls(ui.hwnd);
+    }
+}
+unsafe fn sync_mode_controls(hwnd: HWND) {
+    unsafe {
+        let mode = send(hwnd, MODE, CB_GETCURSEL, 0, 0).0;
+        for (id, enabled) in [
+            (PIN, mode == 0),
+            (TOP, mode == 1),
+            (SIDE, mode == 0),
+            (AUTO, mode == 0),
+            (HIDE, mode == 0),
+            (DWELL, mode == 0),
+            (FULL, mode == 0),
+        ] {
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(
+                control(hwnd, id),
+                enabled,
+            );
+        }
     }
 }
 unsafe fn read(ui: &Ui) -> std::result::Result<Settings, String> {
@@ -190,6 +208,8 @@ unsafe fn read(ui: &Ui) -> std::result::Result<Settings, String> {
         c.titlebar = checked(ui.hwnd, TITLE);
         c.fullscreen_pause = checked(ui.hwnd, FULL);
         c.autostart = checked(ui.hwnd, START);
+        c.pinned = c.pinned && c.mode == Mode::Edge;
+        c.topmost = c.topmost && c.mode == Mode::Floating;
         let key = send(ui.hwnd, KEY, HKM_GETHOTKEY, 0, 0).0 as u32;
         c.hotkey_vk = key & 255;
         let flags = key >> 8;
@@ -214,11 +234,76 @@ unsafe fn read(ui: &Ui) -> std::result::Result<Settings, String> {
 }
 unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
+        WM_SIZE => {
+            unsafe {
+                let mut r = RECT::default();
+                let _ = GetClientRect(hwnd, &mut r);
+                let scale = GetDpiForWindow(hwnd) as f32 / 96.0;
+                let info = SCROLLINFO {
+                    cbSize: size_of::<SCROLLINFO>() as u32,
+                    fMask: SIF_RANGE | SIF_PAGE,
+                    nMin: 0,
+                    nMax: (640.0 * scale) as i32,
+                    nPage: (r.bottom - r.top).max(1) as u32,
+                    ..Default::default()
+                };
+                SetScrollInfo(hwnd, SB_VERT, &info, true);
+            }
+            LRESULT(0)
+        }
+        WM_VSCROLL | WM_MOUSEWHEEL => {
+            unsafe {
+                let mut info = SCROLLINFO {
+                    cbSize: size_of::<SCROLLINFO>() as u32,
+                    fMask: SIF_ALL,
+                    ..Default::default()
+                };
+                let _ = GetScrollInfo(hwnd, SB_VERT, &mut info);
+                let step = (28.0 * GetDpiForWindow(hwnd) as f32 / 96.0) as i32;
+                let delta = if msg == WM_MOUSEWHEEL {
+                    -((w.0 >> 16) as i16) as i32 / 120 * step
+                } else {
+                    match w.0 & 65535 {
+                        0 => -step,
+                        1 => step,
+                        2 => -(info.nPage as i32),
+                        3 => info.nPage as i32,
+                        4 | 5 => info.nTrackPos - info.nPos,
+                        _ => 0,
+                    }
+                };
+                let next = (info.nPos + delta).clamp(0, (info.nMax - info.nPage as i32 + 1).max(0));
+                let amount = info.nPos - next;
+                info.fMask = SIF_POS;
+                info.nPos = next;
+                SetScrollInfo(hwnd, SB_VERT, &info, true);
+                let _ = ScrollWindowEx(
+                    hwnd,
+                    0,
+                    amount,
+                    None,
+                    None,
+                    None,
+                    None,
+                    SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE,
+                );
+                UI.with(|u| {
+                    if let Some(ui) = u.borrow_mut().as_mut() {
+                        ui.scroll = next;
+                    }
+                });
+            }
+            LRESULT(0)
+        }
         WM_CLOSE => {
             close();
             LRESULT(0)
         }
         WM_COMMAND => {
+            if w.0 & 65535 == MODE as usize {
+                unsafe { sync_mode_controls(hwnd) };
+                return LRESULT(0);
+            }
             match w.0 & 65535 {
                 1 => {
                     let result = UI.with(|u| u.borrow().as_ref().map(|ui| unsafe { read(ui) }));
@@ -288,15 +373,16 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             ..Default::default()
         });
         let s = GetDpiForWindow(owner) as f32 / 96.0;
+        let work = crate::platform::primary().rcWork;
         let hwnd = CreateWindowExW(
             WS_EX_CONTROLPARENT,
             w!("LightDo.Settings"),
             w!("轻待 · 设置"),
-            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-            (160.0 * s) as i32,
-            (70.0 * s) as i32,
+            WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VSCROLL,
+            work.left + (24.0 * s) as i32,
+            work.top + (24.0 * s) as i32,
             (500.0 * s) as i32,
-            (660.0 * s) as i32,
+            ((660.0 * s) as i32).min(work.bottom - work.top - 48),
             Some(owner),
             None,
             Some(instance.into()),
@@ -524,6 +610,7 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             owner,
             font,
             settings: settings.clone(),
+            scroll: 0,
         };
         populate(&ui);
         UI.with(|u| *u.borrow_mut() = Some(ui));

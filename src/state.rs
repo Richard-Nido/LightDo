@@ -37,10 +37,16 @@ impl Default for WindowState {
 impl WindowState {
     pub fn show(&mut self) {
         self.target = 1.0;
-        self.phase = if self.pinned {
-            Phase::Pinned
-        } else {
-            Phase::Opening
+        self.phase = match self.mode {
+            Mode::Floating => Phase::Floating,
+            Mode::Desktop => Phase::Desktop,
+            Mode::Edge => {
+                if self.pinned {
+                    Phase::Pinned
+                } else {
+                    Phase::Opening
+                }
+            }
         };
         self.away_since = None;
     }

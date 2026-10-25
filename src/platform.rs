@@ -123,45 +123,21 @@ pub fn autostart_enabled() -> bool {
     }
 }
 
-/// Explorer desktop embedding is isolated here; callers must recover to a
-/// normal top-level window if the host vanishes or parenting fails.
+/// Desktop shell lookup and managed Z order, adapted from Glance
+/// ui/window.rs (MIT, lulu-loopp). The panel remains top-level so the
+/// desktop can be sampled without capturing the panel as a child of it.
 pub fn desktop_host() -> Option<HWND> {
     unsafe {
         let progman = FindWindowW(w!("Progman"), PCWSTR::null()).ok()?;
-        let mut result = 0;
-        let _ = SendMessageTimeoutW(
-            progman,
-            0x052c,
-            WPARAM(0xD),
-            LPARAM(0),
-            SMTO_ABORTIFHUNG,
-            500,
-            Some(&mut result),
-        );
-        let _ = SendMessageTimeoutW(
-            progman,
-            0x052c,
-            WPARAM(0xD),
-            LPARAM(1),
-            SMTO_ABORTIFHUNG,
-            500,
-            Some(&mut result),
-        );
-        // Windows 11 24H2 may place a WorkerW inside Progman. A sibling behind
-        // the icon host is preferred on older desktop arrangements.
-        if let Ok(child) = FindWindowExW(Some(progman), None, w!("WorkerW"), PCWSTR::null()) {
-            return Some(child);
+        if FindWindowExW(Some(progman), None, w!("SHELLDLL_DefView"), PCWSTR::null()).is_ok() {
+            return Some(progman);
         }
         unsafe extern "system" fn each(window: HWND, p: LPARAM) -> BOOL {
             unsafe {
                 if FindWindowExW(Some(window), None, w!("SHELLDLL_DefView"), PCWSTR::null()).is_ok()
                 {
-                    if let Ok(worker) =
-                        FindWindowExW(None, Some(window), w!("WorkerW"), PCWSTR::null())
-                    {
-                        *(p.0 as *mut HWND) = worker;
-                        return false.into();
-                    }
+                    *(p.0 as *mut HWND) = window;
+                    return false.into();
                 }
             }
             true.into()
@@ -177,14 +153,13 @@ pub fn desktop_host() -> Option<HWND> {
 }
 pub fn set_desktop(hwnd: HWND, host: Option<HWND>) -> Result<(), String> {
     unsafe {
-        let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-        let style = if host.is_some() {
-            (style & !WS_POPUP.0) | WS_CHILD.0
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let ex = if host.is_some() {
+            (ex & !WS_EX_APPWINDOW.0) | WS_EX_TOOLWINDOW.0
         } else {
-            (style & !WS_CHILD.0) | WS_POPUP.0
+            (ex & !WS_EX_TOOLWINDOW.0) | WS_EX_APPWINDOW.0
         };
-        SetWindowLongPtrW(hwnd, GWL_STYLE, style as isize);
-        SetParent(hwnd, host).map_err(|e| format!("桌面嵌入失败：{e}"))?;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex as isize);
         let _ = SetWindowPos(
             hwnd,
             None,
@@ -194,7 +169,29 @@ pub fn set_desktop(hwnd: HWND, host: Option<HWND>) -> Result<(), String> {
             0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
+        if let Some(host) = host {
+            sink_to_desktop(hwnd, host);
+        }
         Ok(())
+    }
+}
+pub fn sink_to_desktop(hwnd: HWND, host: HWND) {
+    unsafe {
+        let flags = SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE;
+        if GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 != 0 {
+            let _ = SetWindowPos(hwnd, Some(HWND_NOTOPMOST), 0, 0, 0, 0, flags);
+        }
+        let after = match GetWindow(host, GW_HWNDPREV) {
+            Ok(above) if above == hwnd => return,
+            Ok(above) if GetWindowLongPtrW(above, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 == 0 => {
+                above
+            }
+            _ => HWND_TOP,
+        };
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
+        let _ = SetWindowPos(hwnd, Some(after), 0, 0, 0, 0, flags);
     }
 }
 pub fn fullscreen_other(hwnd: HWND) -> bool {

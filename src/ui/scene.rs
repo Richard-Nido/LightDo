@@ -1952,6 +1952,151 @@ mod tests {
         );
     }
 
+    /// Tests a candidate for excluding an embedded panel from its desktop
+    /// host's capture. This is an experiment, not a production assumption:
+    /// Win32 documents display affinity only for top-level windows.
+    #[test]
+    #[ignore = "shows controlled color windows to test desktop-capture self exclusion"]
+    fn embedded_child_capture_exclusion_probe() {
+        use windows::Win32::Graphics::Gdi::{CreateSolidBrush, DeleteObject, UpdateWindow};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_STYLE, SW_SHOWNA, SetParent, SetWindowDisplayAffinity, SetWindowLongPtrW,
+            UnregisterClassW, WDA_EXCLUDEFROMCAPTURE, WS_CHILD,
+        };
+        unsafe {
+            let _ = windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_MULTITHREADED,
+            );
+            let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
+                windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+            );
+            let module = GetModuleHandleW(None).unwrap();
+            let white = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0xffffff));
+            let red = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x0000ff));
+            unsafe extern "system" fn plain(h: HWND, m: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+                unsafe { DefWindowProcW(h, m, w, l) }
+            }
+            for (name, brush) in [
+                (w!("LightDoProbeWhite"), white),
+                (w!("LightDoProbeRed"), red),
+            ] {
+                RegisterClassW(&WNDCLASSW {
+                    lpfnWndProc: Some(plain),
+                    hInstance: module.into(),
+                    lpszClassName: name,
+                    hbrBackground: brush,
+                    ..Default::default()
+                });
+            }
+            let gfx = super::super::gfx::Gfx::new().unwrap();
+            let mut means = Vec::new();
+            for excluded in [false, true] {
+                let parent = CreateWindowExW(
+                    WINDOW_EX_STYLE(0),
+                    w!("LightDoProbeWhite"),
+                    w!("LightDo controlled capture probe"),
+                    WS_POPUP,
+                    100,
+                    100,
+                    500,
+                    400,
+                    None,
+                    None,
+                    Some(module.into()),
+                    None,
+                )
+                .unwrap();
+                let child = CreateWindowExW(
+                    WINDOW_EX_STYLE(0),
+                    w!("LightDoProbeRed"),
+                    w!(""),
+                    WS_POPUP,
+                    150,
+                    150,
+                    100,
+                    100,
+                    None,
+                    None,
+                    Some(module.into()),
+                    None,
+                )
+                .unwrap();
+                if excluded {
+                    SetWindowDisplayAffinity(child, WDA_EXCLUDEFROMCAPTURE)
+                        .expect("affinity while top-level");
+                }
+                SetWindowLongPtrW(child, GWL_STYLE, WS_CHILD.0 as isize);
+                let _ = SetParent(child, Some(parent));
+                let _ = SetWindowPos(child, None, 50, 50, 100, 100, SWP_NOZORDER | SWP_NOACTIVATE);
+                let _ = ShowWindow(parent, SW_SHOWNA);
+                let _ = ShowWindow(child, SW_SHOWNA);
+                let _ = UpdateWindow(parent);
+                let _ = UpdateWindow(child);
+                let _ = windows::Win32::Graphics::Dwm::DwmFlush();
+                let over = over_all(if excluded {
+                    "LightDoProbeOverExcluded"
+                } else {
+                    "LightDoProbeOverNormal"
+                });
+                let area = RECT {
+                    left: 100,
+                    top: 100,
+                    right: 600,
+                    bottom: 500,
+                };
+                let mut scene = Scene::new(area, Arc::new(|| {}), &gfx).unwrap();
+                scene.arrange(area, over);
+                scene.want();
+                let began = std::time::Instant::now();
+                let mut got = None;
+                while began.elapsed() < std::time::Duration::from_secs(3) {
+                    use windows::Win32::UI::WindowsAndMessaging::{
+                        DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
+                    };
+                    let mut m = MSG::default();
+                    while PeekMessageW(&mut m, None, 0, 0, PM_REMOVE).as_bool() {
+                        let _ = TranslateMessage(&m);
+                        DispatchMessageW(&m);
+                    }
+                    if let Some(capture) = scene.ready() {
+                        got = Some(capture);
+                        break;
+                    }
+                    scene.want();
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                let capture = got.expect("controlled parent captured");
+                let samples = capture.luminances(
+                    RECT {
+                        left: 165,
+                        top: 165,
+                        right: 235,
+                        bottom: 235,
+                    },
+                    RECT::default(),
+                    4,
+                );
+                let mean = samples.iter().sum::<f32>() / samples.len().max(1) as f32;
+                means.push(mean);
+                drop(scene);
+                let _ = DestroyWindow(child);
+                let _ = DestroyWindow(parent);
+                let _ = DestroyWindow(over);
+            }
+            let _ = UnregisterClassW(w!("LightDoProbeWhite"), Some(module.into()));
+            let _ = UnregisterClassW(w!("LightDoProbeRed"), Some(module.into()));
+            let _ = DeleteObject(white.into());
+            let _ = DeleteObject(red.into());
+            println!("controlled red child, then affinity-before-parenting: {means:?}");
+            assert!(means[0] < 0.5, "baseline must hold the red child");
+            assert!(
+                means[1] > 0.85,
+                "embedded child exclusion is not supported by the observed capture path; do not use it in production"
+            );
+        }
+    }
+
     /// What is behind an area reaches as far as the screens it is on, not the desktop's whole box: a widget at the top
     /// of a screen lower than the one beside it has no screen above it.
     #[test]

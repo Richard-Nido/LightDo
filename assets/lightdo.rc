@@ -1,8 +1,10 @@
+#pragma code_page(65001)
 #include <windows.h>
+1 ICON "lightdo.ico"
 1 RT_MANIFEST "lightdo.manifest"
 1 VERSIONINFO
-FILEVERSION 0,1,0,0
-PRODUCTVERSION 0,1,0,0
+FILEVERSION @VERSION_COMMAS@
+PRODUCTVERSION @VERSION_COMMAS@
 FILEFLAGSMASK 0x3fL
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_APP
@@ -13,11 +15,11 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "Yuan Haoran (Richard-Nido)\0"
    VALUE "FileDescription", "LightDo - Local glass todo\0"
-   VALUE "FileVersion", "0.1.0\0"
+   VALUE "FileVersion", "@VERSION@\0"
    VALUE "InternalName", "lightdo\0"
    VALUE "OriginalFilename", "lightdo.exe\0"
    VALUE "ProductName", "LightDo\0"
-   VALUE "ProductVersion", "0.1.0\0"
+   VALUE "ProductVersion", "@VERSION@\0"
    VALUE "LegalCopyright", "Copyright (c) 2026 Yuan Haoran\0"
   END
  END

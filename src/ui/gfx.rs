@@ -105,6 +105,51 @@ pub fn color(hex: u32, a: f32) -> D2D1_COLOR_F {
         a,
     }
 }
+pub struct RoundClip<'a> {
+    dc: &'a ID2D1DeviceContext,
+    _mask: ID2D1Geometry,
+}
+impl Drop for RoundClip<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            self.dc.PopLayer();
+        }
+    }
+}
+pub fn round_clip<'a>(
+    factory: &ID2D1Factory1,
+    dc: &'a ID2D1DeviceContext,
+    r: &D2D1_ROUNDED_RECT,
+) -> Result<RoundClip<'a>> {
+    unsafe {
+        let mask: ID2D1Geometry = factory.CreateRoundedRectangleGeometry(r)?.cast()?;
+        let mut params = D2D1_LAYER_PARAMETERS1 {
+            contentBounds: r.rect,
+            geometricMask: std::mem::ManuallyDrop::new(Some(mask.clone())),
+            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            maskTransform: Matrix3x2::identity(),
+            opacity: 1.0,
+            ..Default::default()
+        };
+        dc.PushLayer(&params, None);
+        std::mem::ManuallyDrop::drop(&mut params.geometricMask);
+        Ok(RoundClip { dc, _mask: mask })
+    }
+}
+pub struct AxisClip<'a>(&'a ID2D1DeviceContext);
+impl Drop for AxisClip<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            self.0.PopAxisAlignedClip();
+        }
+    }
+}
+pub fn axis_clip(dc: &ID2D1DeviceContext, r: D2D_RECT_F) -> AxisClip<'_> {
+    unsafe {
+        dc.PushAxisAlignedClip(&r, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    }
+    AxisClip(dc)
+}
 pub fn rect(x: f32, y: f32, w: f32, h: f32) -> D2D_RECT_F {
     D2D_RECT_F {
         left: x,
@@ -113,6 +158,9 @@ pub fn rect(x: f32, y: f32, w: f32, h: f32) -> D2D_RECT_F {
         bottom: y + h,
     }
 }
+/// # Safety
+/// `value` must have the representation and byte size required by the
+/// selected Direct2D effect property.
 pub unsafe fn property<T>(
     effect: &ID2D1Effect,
     index: u32,
@@ -267,6 +315,21 @@ pub fn displaced(w: f32, h: f32, r: f32, x: f32, y: f32) -> [u8; 4] {
         255,
     ]
 }
+#[cfg(test)]
+mod lens_tests {
+    use super::*;
+    #[test]
+    fn the_center_is_neutral_and_the_rim_bends_outward() {
+        assert_eq!(
+            displaced(400.0, 600.0, 24.0, 200.0, 300.0),
+            [128, 128, 128, 255]
+        );
+        assert!(displaced(400.0, 600.0, 24.0, 0.5, 300.0)[2] < 128);
+        assert!(displaced(400.0, 600.0, 24.0, 399.5, 300.0)[2] > 128);
+        assert!(displaced(400.0, 600.0, 24.0, 200.0, 0.5)[1] < 128);
+        assert!(displaced(400.0, 600.0, 24.0, 200.0, 599.5)[1] > 128);
+    }
+}
 pub struct Lens {
     map: ID2D1Bitmap1,
     size: (u32, u32),
@@ -279,11 +342,11 @@ impl Lens {
             for y in 0..size.1 {
                 for x in 0..size.0 {
                     pixels.extend_from_slice(&displaced(
-                        size.0 as f32 / scale,
-                        size.1 as f32 / scale,
+                        size.0 as f32 / scale - 20.0,
+                        size.1 as f32 / scale - 20.0,
                         24.0,
-                        (x as f32 + 0.5) / scale,
-                        (y as f32 + 0.5) / scale,
+                        (x as f32 + 0.5) / scale - 10.0,
+                        (y as f32 + 0.5) / scale - 10.0,
                     ));
                 }
             }
