@@ -14,7 +14,7 @@
 | 边缘/悬浮/桌面 | 旧方案单 HWND 菜单切换；后续受控捕获反例 | 旧 SetParent 方案因自身捕获风险否决；已改为明确的桌面 Z 序维护，新版三种模式均待解锁后复测 |
 | 中文 IME/候选窗 | 实际按 n、i、Return；行内 n、i、Space、Esc；独立原生编辑控件 | PASS 当前缩放：候选窗出现；组合 Enter 未新增任务，第二次 Enter 才新增；Space 选出“你”；Esc 恢复原文。证据 images/p0-ime-inline.jpg |
 | Unicode 待办新增 | 原生输入“中文待办 · LightDo 🙂”，Enter，读取隔离数据 | PASS；首尾空白去除，顶部新增，输入清空且保留焦点 |
-| 自动化测试 | cargo test --locked --lib | 16 PASS，9 个真实桌面测试/实验明确忽略；没有把这些忽略项写成通过 |
+| 自动化测试 | cargo test --locked --lib | 17 PASS，9 个真实桌面测试/实验明确忽略；没有把这些忽略项写成通过 |
 | 原生捕获集成测试 | scene_first_frame_holds_the_windows / scene_shows / wanted_once_one_is_taken_another_is_read | 首帧和场景测试 PASS；连续帧测试首次 FAIL、重试 PASS，稳定性仍待排查，不能抹去失败 |
 | 连续帧补充复测 | 同一测试独立运行 5 次 | 5/5 PASS；不抹去首次 FAIL，且不等同于全部视觉验收 |
 | 桌面子窗口排除探索 | 白宿主/红子窗，对比设置排除标志前后 | FAIL：两组亮度均 0.21176487，不能排除自身，生产实现未采用该路径 |
@@ -24,6 +24,7 @@
 | 最新文档提交 CI | [run 40223515215](https://github.com/Richard-Nido/LightDo/actions/runs/40223515215)，提交 df7ab92 | PASS：文档和诊断入口随主分支检查完成；没有改变 pending 的桌面验收状态 |
 | 最新设置修正 CI | [run 40224724729](https://github.com/Richard-Nido/LightDo/actions/runs/40224724729)，提交 130d4d0 | PASS：设置模式选择通知修正后，完整检查、构建和安装冒烟通过 |
 | 最新模型约束 CI | [run 40225266894](https://github.com/Richard-Nido/LightDo/actions/runs/40225266894)，提交 4e4800d | PASS：持久化模式/置顶/固定展开/快捷键约束及新增测试通过；旧 run 40225240144 的失败来自此前未修正的测试夹具 |
+| 最新文档 CI | [run 40225675890](https://github.com/Richard-Nido/LightDo/actions/runs/40225675890)，提交 da11dcb | PASS：发布指纹脚本与接续文档检查、构建和安装冒烟通过 |
 | 正式发布门槛 | scripts/release.ps1 -CheckOnly，干净工作区 | PASS（正确阻止发布）：本机视觉/模式/安装运行验收仍 pending，脚本返回失败，不创建标签或 Release |
 | 安装器运行中保护 | 开发 EXE 静默安装，隔离测试应用运行中 | PASS：返回 1618，没有安装程序文件，没有强杀进程 |
 | 开发 EXE 生成 | NSIS 3.12、SHA-256 校验的编译器、/WX | 已生成 0.1.0 开发安装包和许可 ZIP，未完成安装/升级/卸载整体验收 |
