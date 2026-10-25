@@ -24,3 +24,6 @@ jobs:
       - name: Validate installer packaging
         shell: pwsh
         run: ./scripts/package.ps1 -SkipBuild
+      - name: Silent installer smoke test
+        shell: pwsh
+        run: ./scripts/test-installer.ps1
