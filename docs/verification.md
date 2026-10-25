@@ -20,6 +20,8 @@
 | 桌面子窗口排除探索 | 白宿主/红子窗，对比设置排除标志前后 | FAIL：两组亮度均 0.21176487，不能排除自身，生产实现未采用该路径 |
 | CI 基线 | GitHub Actions run 40217914615，提交 0b88a36 | PASS：Windows 检查、测试、x64 编译；仅适用于该基线提交，不代表当前新增功能验收 |
 | 新版 CI 首次运行 | run 40222550769，提交 900f90e | FAIL：NSIS 下载内容未通过固定 SHA-256 校验，流程正确停止，未执行该下载。已增加多个官方镜像、HTTPS curl 和固定哈希校验的顺序回退，等待新 CI 结果 |
+| 新版 CI 修复后 | [run 40223078172](https://github.com/Richard-Nido/LightDo/actions/runs/40223078172)，提交 d551e7e | PASS：格式、全目标检查、16 项常规测试、x64 构建、固定哈希 NSIS 获取、安装包生成及静默安装生命周期测试 |
+| 正式发布门槛 | scripts/release.ps1 -CheckOnly，干净工作区 | PASS（正确阻止发布）：本机视觉/模式/安装运行验收仍 pending，脚本返回失败，不创建标签或 Release |
 | 安装器运行中保护 | 开发 EXE 静默安装，隔离测试应用运行中 | PASS：返回 1618，没有安装程序文件，没有强杀进程 |
 | 开发 EXE 生成 | NSIS 3.12、SHA-256 校验的编译器、/WX | 已生成 0.1.0 开发安装包和许可 ZIP，未完成安装/升级/卸载整体验收 |
 | 静默安装文件级冒烟 | scripts/test-installer.ps1，空的本应用用户目录与隔离安装路径 | PASS：安装、payload 哈希、发布者/卸载引号、同版本覆盖、默认卸载保留合成标记、开始菜单清理；未观察安装 GUI、未测试跨版本升级和主动删除数据选择 |
@@ -40,3 +42,5 @@
 - 资源占用、启动时间、切换泄漏、从最终 Release 下载后校验并安装；干净 Sandbox/虚拟机尚未执行。
 
 测试硬件：Intel Core i9-13900H、Intel UHD Graphics + RTX 4070 Laptop GPU。最终资源占用尚未测量，不引用上游宣传数字。图片 images/p0-ime-inline.jpg 是早期实际基线运行证据，只能证明当时的 IME 与背景效果，不能作为最新提交的整体验收截图。
+
+当前开发安装包为 0.1.0，361551 字节，未签名；SHA-256 为 `d13ac0258a4bc78ed931f8c3feeeffc25ed76b6680b49c00dd7b253378d24808`。程序 PE Machine=0x8664，资源版本 0.1.0，CompanyName=Yuan Haoran (Richard-Nido)。导入表没有 VC 运行库 DLL；只使用 Windows 系统 DLL。此开发包尚未完成实际运行和全交互验收，不能称为正式交付版。
