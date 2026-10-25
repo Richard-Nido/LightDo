@@ -118,6 +118,19 @@ impl Model {
         {
             return Err("窗口尺寸数据超出安全范围；原文件已保留".into());
         }
+        if self.settings.mode != Mode::Edge && self.settings.pinned {
+            return Err("固定展开仅适用于边缘面板；原文件已保留".into());
+        }
+        if self.settings.mode != Mode::Floating && self.settings.topmost {
+            return Err("始终置顶仅适用于悬浮窗；原文件已保留".into());
+        }
+        if self.settings.hotkey_mod & !0x7 != 0
+            || self.settings.hotkey_mod == 0
+            || self.settings.hotkey_vk == 0
+            || self.settings.hotkey_vk > 0xff
+        {
+            return Err("快捷键配置无效；原文件已保留".into());
+        }
         Ok(())
     }
     pub fn add(&mut self, text: &str) -> Option<String> {
@@ -227,6 +240,19 @@ mod tests {
         assert!(m.validate().is_err());
         m.settings.width = 400;
         m.settings.height = -1;
+        assert!(m.validate().is_err());
+    }
+    #[test]
+    fn incompatible_mode_settings_are_rejected() {
+        let mut m = Model::default();
+        m.settings.pinned = true;
+        assert!(m.validate().is_err());
+        m.settings.pinned = false;
+        m.settings.mode = Mode::Edge;
+        m.settings.topmost = true;
+        assert!(m.validate().is_err());
+        m.settings.topmost = false;
+        m.settings.hotkey_mod = 0;
         assert!(m.validate().is_err());
     }
 }
