@@ -18,7 +18,7 @@ Windows 会话经 WTS 只读诊断确认锁定（lockFlag=0）。不要在锁定
 4. 重新完成 P0：真实背景折射/拖动/浅深色；同一 HWND 的边缘/悬浮/桌面；原生中文 IME 与 Enter 时序。早期图片只证明早期构建，不代表新版已通过。
 5. 使用 computer-use 的 @oai/sky 操作真实窗口。Win+D 和锁屏等受该技能限制的步骤由用户手动操作，记录实际反馈；不要使用替代输入通道规避技能限制。
 6. 完成完整功能、DPI、设置、恢复、资源占用、安装/覆盖/卸载验收，持续更新 verification.md。正常退出使用托盘或本应用 `--shutdown`，安装器不会强杀进程。
-7. 当前 `docs/release-acceptance.json` 为 pending。只有实际完成本机验收后才填写通过与源码指纹，提交记录，随后使用 `scripts/release.ps1 -Publish`。跟踪 Actions，下载正式 Release EXE 校验并安装复核。
+7. 当前 `docs/release-acceptance.json` 为 pending。只有实际完成本机验收后才将项目置为 true，再运行 `scripts/finalize-acceptance.ps1` 生成稳定源码指纹，随后使用 `scripts/release.ps1 -Publish`。跟踪 Actions，下载正式 Release EXE 校验并安装复核。
 
 ## 数据与工具
 

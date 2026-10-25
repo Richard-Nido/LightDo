@@ -31,7 +31,7 @@
 版本更新和发布使用同一个脚本：
 
 1. 提交代码后，运行 `scripts/release.ps1 -Prepare -Version 1.0.0`，更新源码/资源版本并检查、打包和提交准备版本。
-2. 对该 EXE 完成本机实际验收，更新 `docs/verification.md` 及 `docs/release-acceptance.json`；只有实际通过的项目才能置为 true。运行 `scripts/source-fingerprint.ps1` 记录已提交源码指纹，提交验收记录。
+2. 对该 EXE 完成本机实际验收，更新 `docs/verification.md` 及 `docs/release-acceptance.json`；只有实际通过的项目才能置为 true。提交最终验收记录后运行 `scripts/finalize-acceptance.ps1`，它会对不含自身的已提交源码清单生成指纹并提交验收门槛。
 3. 运行 `scripts/release.ps1 -Publish`。脚本阻止脏工作区、版本不一致、验收指纹不匹配、未通过项目和重复标签。
 4. 标签触发 Windows Actions：核验门槛、检查、测试、构建、打包、生成许可附件与 SHA-256，全部成功后才创建公开 Release。只有发布任务有 contents:write。
 5. 下载 Release EXE 对照 SHA-256 并复核安装运行。当前尚未走到正式发布这一步。

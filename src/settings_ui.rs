@@ -155,7 +155,6 @@ unsafe fn populate(ui: &Ui) {
             c.hotkey_vk as usize | ((flags as usize) << 8),
             0,
         );
-        sync_mode_controls(ui.hwnd);
     }
 }
 unsafe fn sync_mode_controls(hwnd: HWND) {
