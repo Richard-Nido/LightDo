@@ -299,7 +299,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
             LRESULT(0)
         }
         WM_COMMAND => {
-            if w.0 & 65535 == MODE as usize {
+            if w.0 & 65535 == MODE as usize && (w.0 >> 16) as u32 == CBN_SELCHANGE {
                 unsafe { sync_mode_controls(hwnd) };
                 return LRESULT(0);
             }
