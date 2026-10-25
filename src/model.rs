@@ -245,6 +245,7 @@ mod tests {
     #[test]
     fn incompatible_mode_settings_are_rejected() {
         let mut m = Model::default();
+        m.settings.mode = Mode::Floating;
         m.settings.pinned = true;
         assert!(m.validate().is_err());
         m.settings.pinned = false;
