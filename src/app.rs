@@ -1,0 +1,1465 @@
+//! One native panel, a system EDIT for each active editor, no web runtime.
+use crate::{
+    model::*,
+    platform, settings_ui,
+    state::*,
+    storage::Store,
+    ui::{
+        gfx::{self, Gfx, Lens, Surface},
+        scene::Scene,
+    },
+};
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+    rc::Rc,
+    sync::Arc,
+    time::Instant,
+};
+use windows::{
+    Win32::{
+        Foundation::*,
+        Graphics::{Direct2D::*, DirectWrite::*, Gdi::*},
+        System::{Com::*, LibraryLoader::*, Threading::*},
+        UI::{Controls::*, HiDpi::*, Input::KeyboardAndMouse::*, Shell::*, WindowsAndMessaging::*},
+    },
+    core::{BOOL, HSTRING, Interface, Result, w},
+};
+use windows_numerics::Vector2;
+
+const FRAME: u32 = WM_APP + 1;
+const COMMIT: u32 = WM_APP + 2;
+const CANCEL: u32 = WM_APP + 3;
+const TRAY: u32 = WM_APP + 4;
+const KEY_NAV: u32 = WM_APP + 15;
+const INPUT: usize = 101;
+const INLINE: usize = 102;
+#[derive(Clone, Copy)]
+struct Event {
+    msg: u32,
+    w: WPARAM,
+    l: LPARAM,
+}
+thread_local! {
+    static EVENTS:RefCell<VecDeque<Event>>=const{RefCell::new(VecDeque::new())};
+    static MAIN:Cell<HWND>=const{Cell::new(HWND(std::ptr::null_mut()))};
+    static SCALE:Cell<f32>=const{Cell::new(1.0)};
+    static LOCKED:Cell<bool>=const{Cell::new(false)};
+    static COMPOSING:Cell<bool>=const{Cell::new(false)};
+    static IME_ENDED:Cell<Option<Instant>>=const{Cell::new(None)};
+}
+fn queue(msg: u32, w: WPARAM, l: LPARAM) {
+    EVENTS.with(|e| e.borrow_mut().push_back(Event { msg, w, l }));
+}
+unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    match msg {
+        WM_NCHITTEST => {
+            let mut r = RECT::default();
+            unsafe {
+                let _ = GetWindowRect(hwnd, &mut r);
+            }
+            let x = (l.0 as i16) as i32 - r.left;
+            let y = ((l.0 >> 16) as i16) as i32 - r.top;
+            let s = SCALE.with(Cell::get);
+            let border = (6.0 * s) as i32;
+            if !LOCKED.with(Cell::get) {
+                let a = x < border;
+                let b = x >= r.right - r.left - border;
+                let c = y < border;
+                let d = y >= r.bottom - r.top - border;
+                let hit = match (a, b, c, d) {
+                    (true, _, true, _) => HTTOPLEFT,
+                    (_, true, true, _) => HTTOPRIGHT,
+                    (true, _, _, true) => HTBOTTOMLEFT,
+                    (_, true, _, true) => HTBOTTOMRIGHT,
+                    (true, _, _, _) => HTLEFT,
+                    (_, true, _, _) => HTRIGHT,
+                    (_, _, true, _) => HTTOP,
+                    (_, _, _, true) => HTBOTTOM,
+                    _ => 0,
+                };
+                if hit != 0 {
+                    return LRESULT(hit as isize);
+                }
+                if y < (52.0 * s) as i32 && x < r.right - r.left - (152.0 * s) as i32 {
+                    return LRESULT(HTCAPTION as isize);
+                }
+            }
+            LRESULT(HTCLIENT as isize)
+        }
+        WM_ERASEBKGND => LRESULT(1),
+        WM_PAINT => {
+            unsafe {
+                let mut p = PAINTSTRUCT::default();
+                let _ = BeginPaint(hwnd, &mut p);
+                let _ = EndPaint(hwnd, &p);
+            }
+            queue(FRAME, w, l);
+            LRESULT(0)
+        }
+        WM_CLOSE
+        | WM_DESTROY
+        | WM_SIZE
+        | WM_MOVE
+        | WM_TIMER
+        | WM_HOTKEY
+        | WM_DISPLAYCHANGE
+        | WM_SETTINGCHANGE
+        | WM_DPICHANGED
+        | WM_ENTERSIZEMOVE
+        | WM_EXITSIZEMOVE
+        | WM_LBUTTONUP
+        | WM_LBUTTONDBLCLK
+        | WM_MOUSEMOVE
+        | WM_MOUSEWHEEL
+        | WM_RBUTTONUP
+        | WM_COMMAND
+        | WM_ACTIVATE
+        | WM_KEYDOWN
+        | KEY_NAV
+        | settings_ui::CHANGED
+        | FRAME
+        | COMMIT
+        | CANCEL
+        | TRAY => {
+            queue(msg, w, l);
+            LRESULT(0)
+        }
+        WM_CTLCOLOREDIT => {
+            unsafe {
+                let dc = HDC(w.0 as *mut _);
+                let dark = platform::system_dark();
+                SetTextColor(dc, COLORREF(if dark { 0xf5f5f5 } else { 0x302420 }));
+                let background = COLORREF(if dark { 0x3b342f } else { 0xf7f5f1 });
+                SetBkColor(dc, background);
+                SetDCBrushColor(dc, background);
+            }
+            LRESULT(unsafe { GetStockObject(DC_BRUSH) }.0 as isize)
+        }
+        _ if msg >= 0xC000 => {
+            queue(msg, w, l);
+            LRESULT(0)
+        }
+        _ => unsafe { DefWindowProcW(hwnd, msg, w, l) },
+    }
+}
+unsafe extern "system" fn edit_proc(
+    hwnd: HWND,
+    msg: u32,
+    w: WPARAM,
+    l: LPARAM,
+    _: usize,
+    _: usize,
+) -> LRESULT {
+    match msg {
+        WM_KEYDOWN if w.0 == VK_TAB.0 as usize && !COMPOSING.with(Cell::get) => {
+            MAIN.with(|m| unsafe {
+                let _ = PostMessageW(Some(m.get()), KEY_NAV, WPARAM(0), LPARAM(0));
+            });
+            return LRESULT(0);
+        }
+        WM_IME_STARTCOMPOSITION => COMPOSING.with(|c| c.set(true)),
+        WM_IME_ENDCOMPOSITION => {
+            COMPOSING.with(|c| c.set(false));
+            IME_ENDED.with(|c| c.set(Some(Instant::now())));
+        }
+        WM_KEYDOWN if w.0 == VK_RETURN.0 as usize => {
+            let recent = IME_ENDED.with(|c| c.get().is_some_and(|t| t.elapsed().as_millis() < 120));
+            if !COMPOSING.with(Cell::get) && !recent {
+                MAIN.with(|m| unsafe {
+                    let _ = PostMessageW(Some(m.get()), COMMIT, WPARAM(hwnd.0 as usize), LPARAM(0));
+                });
+                return LRESULT(0);
+            }
+        }
+        WM_CHAR if w.0 == 13 || w.0 == 10 => return LRESULT(0),
+        WM_KEYDOWN if w.0 == VK_ESCAPE.0 as usize && !COMPOSING.with(Cell::get) => {
+            MAIN.with(|m| unsafe {
+                let _ = PostMessageW(Some(m.get()), CANCEL, WPARAM(hwnd.0 as usize), LPARAM(0));
+            });
+            return LRESULT(0);
+        }
+        WM_KILLFOCUS => {
+            MAIN.with(|m| unsafe {
+                let _ = PostMessageW(Some(m.get()), COMMIT, WPARAM(hwnd.0 as usize), LPARAM(1));
+            });
+        }
+        _ => {}
+    }
+    unsafe { DefSubclassProc(hwnd, msg, w, l) }
+}
+fn edit_text(hwnd: HWND) -> String {
+    unsafe {
+        let length = GetWindowTextLengthW(hwnd);
+        let mut text = vec![0u16; length as usize + 1];
+        let n = GetWindowTextW(hwnd, &mut text);
+        String::from_utf16_lossy(&text[..n as usize])
+    }
+}
+fn set_text(hwnd: HWND, text: &str) {
+    unsafe {
+        let _ = SetWindowTextW(hwnd, &HSTRING::from(text));
+    }
+}
+
+struct Row {
+    id: String,
+    top: f32,
+    height: f32,
+}
+struct App {
+    hwnd: HWND,
+    input: HWND,
+    inline: HWND,
+    editing: Option<String>,
+    store: Store,
+    model: Model,
+    gfx: Rc<Gfx>,
+    surface: Surface,
+    scene: Option<Scene>,
+    lens: Option<Lens>,
+    background: Option<(ID2D1Bitmap1, RECT)>,
+    state: WindowState,
+    start: Instant,
+    last_tick: Instant,
+    scale: f32,
+    size: (u32, u32),
+    rows: Vec<Row>,
+    scroll: f32,
+    hover: Option<String>,
+    selected: Option<String>,
+    dirty: bool,
+    visible: bool,
+    in_menu: bool,
+    moving: bool,
+    desktop: Option<HWND>,
+    error: Option<String>,
+    quit: bool,
+    font: HFONT,
+    taskbar_created: u32,
+}
+impl App {
+    fn save(&mut self) {
+        if let Err(e) = self.store.save(&self.model) {
+            self.error = Some(e)
+        }
+        self.dirty = true;
+    }
+    fn open_settings(&mut self) {
+        let diagnostic = format!(
+            "背景：{} · {}\n数据仅保存在本机；安装包未签名。",
+            if self.background.is_some() {
+                "实时背景合成"
+            } else {
+                "降级 / 背景不可用"
+            },
+            if self.gfx.software {
+                "软件渲染"
+            } else {
+                "Direct3D 硬件渲染"
+            }
+        );
+        if let Err(e) = settings_ui::open(self.hwnd, &self.model.settings, &diagnostic) {
+            self.error = Some(e.to_string());
+        }
+    }
+    fn apply_settings(&mut self, mut next: Settings) {
+        let old = self.model.settings.clone();
+        if (next.hotkey_mod, next.hotkey_vk) != (old.hotkey_mod, old.hotkey_vk) {
+            unsafe {
+                let _ = UnregisterHotKey(Some(self.hwnd), 1);
+                if RegisterHotKey(
+                    Some(self.hwnd),
+                    1,
+                    HOT_KEY_MODIFIERS(next.hotkey_mod) | MOD_NOREPEAT,
+                    next.hotkey_vk,
+                )
+                .is_err()
+                {
+                    let _ = RegisterHotKey(
+                        Some(self.hwnd),
+                        1,
+                        HOT_KEY_MODIFIERS(old.hotkey_mod) | MOD_NOREPEAT,
+                        old.hotkey_vk,
+                    );
+                    self.message("新快捷键已被占用，已保留原快捷键。请重新设置。");
+                    next.hotkey_mod = old.hotkey_mod;
+                    next.hotkey_vk = old.hotkey_vk;
+                }
+            }
+        }
+        if next.autostart != old.autostart {
+            if let Err(e) = platform::autostart(next.autostart) {
+                next.autostart = old.autostart;
+                self.error = Some(e);
+            }
+        }
+        let requested = next.mode;
+        next.mode = old.mode;
+        self.model.settings = next;
+        LOCKED.with(|l| l.set(self.model.settings.locked));
+        self.mode(requested);
+        self.reposition();
+        self.save();
+    }
+    fn message(&self, text: &str) {
+        unsafe {
+            MessageBoxW(
+                Some(self.hwnd),
+                &HSTRING::from(text),
+                w!("轻待 LightDo"),
+                MB_OK | MB_ICONINFORMATION,
+            );
+        }
+    }
+    fn activate_input(&mut self) {
+        unsafe {
+            let _ = SetForegroundWindow(self.hwnd);
+            let _ = SetFocus(Some(self.input));
+        }
+    }
+    fn show(&mut self, activate: bool) {
+        self.visible = true;
+        self.state.show();
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+        }
+        self.dirty = true;
+        self.reposition();
+        if activate {
+            self.activate_input()
+        }
+    }
+    fn hide_tray(&mut self) {
+        self.visible = false;
+        self.background = None;
+        self.scene = None;
+        self.surface.release(&self.gfx);
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_HIDE);
+        }
+        if !self.model.settings.tray_tip_shown {
+            self.model.settings.tray_tip_shown = true;
+            self.save();
+            self.message("轻待仍在托盘运行。点击托盘图标或按 Ctrl+Alt+L 找回；右键托盘可退出。");
+        }
+    }
+    fn editor(&self, id: usize) -> Result<HWND> {
+        unsafe {
+            let h = CreateWindowExW(
+                WS_EX_LAYERED,
+                w!("EDIT"),
+                w!(""),
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
+                0,
+                0,
+                10,
+                10,
+                Some(self.hwnd),
+                Some(HMENU(id as *mut _)),
+                None,
+                None,
+            )?;
+            SetLayeredWindowAttributes(h, COLORREF(0), 255, LWA_ALPHA)?;
+            SendMessageW(
+                h,
+                WM_SETFONT,
+                Some(WPARAM(self.font.0 as usize)),
+                Some(LPARAM(1)),
+            );
+            SendMessageW(h, EM_SETLIMITTEXT, Some(WPARAM(32767)), Some(LPARAM(0)));
+            let _ = SetWindowSubclass(h, Some(edit_proc), 1, 0);
+            Ok(h)
+        }
+    }
+    fn layout_editors(&self) {
+        unsafe {
+            let s = self.scale;
+            let _ = SetWindowPos(
+                self.input,
+                None,
+                (28.0 * s) as i32,
+                (82.0 * s) as i32,
+                (self.size.0 as f32 - 92.0 * s).max(40.0) as i32,
+                (30.0 * s) as i32,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            );
+            if self.editing.is_some() {
+                if let Some(row) = self
+                    .rows
+                    .iter()
+                    .find(|r| Some(&r.id) == self.editing.as_ref())
+                {
+                    let _ = SetWindowPos(
+                        self.inline,
+                        None,
+                        (60.0 * s) as i32,
+                        ((row.top + 8.0) * s) as i32,
+                        (self.size.0 as f32 - 116.0 * s) as i32,
+                        (row.height * s).max(28.0 * s) as i32,
+                        SWP_NOACTIVATE | SWP_NOZORDER,
+                    );
+                }
+            }
+        }
+    }
+    fn commit(&mut self, hwnd: HWND, blur: bool) {
+        if COMPOSING.with(Cell::get) {
+            return;
+        }
+        if hwnd == self.inline && !self.inline.is_invalid() {
+            if let Some(id) = self.editing.take() {
+                self.model.edit(&id, &edit_text(self.inline));
+                unsafe {
+                    let _ = DestroyWindow(self.inline);
+                }
+                self.inline = HWND::default();
+                self.save();
+            }
+        } else if hwnd == self.input && !blur {
+            let value = edit_text(self.input);
+            if self.model.add(&value).is_some() {
+                self.save();
+                set_text(self.input, "");
+                self.activate_input();
+                self.scroll = 0.0;
+            }
+        }
+    }
+    fn cancel(&mut self, hwnd: HWND) {
+        if hwnd == self.inline && self.editing.take().is_some() {
+            unsafe {
+                let _ = DestroyWindow(self.inline);
+            }
+            self.inline = HWND::default();
+            self.dirty = true;
+        } else if self.model.settings.mode == Mode::Edge && !self.model.settings.pinned {
+            unsafe {
+                let _ = SetFocus(Some(self.hwnd));
+            }
+            self.state.blocked = false;
+            self.state.hide();
+        }
+    }
+    fn start_edit(&mut self, id: String) {
+        if self.editing.is_some() {
+            self.commit(self.inline, false)
+        }
+        if let Some(todo) = self.model.todos.iter().find(|t| t.id == id) {
+            let value = todo.text.clone();
+            match self.editor(INLINE) {
+                Ok(hwnd) => {
+                    self.inline = hwnd;
+                    self.editing = Some(id);
+                    set_text(hwnd, &value);
+                    self.layout_editors();
+                    unsafe {
+                        let _ = SetFocus(Some(hwnd));
+                        SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+                    }
+                }
+                Err(e) => self.error = Some(e.to_string()),
+            }
+        }
+    }
+    fn mode(&mut self, mode: Mode) {
+        let old = self.model.settings.mode;
+        if mode == old {
+            return;
+        }
+        if old == Mode::Desktop {
+            let _ = platform::set_desktop(self.hwnd, None);
+            self.desktop = None;
+        }
+        if mode == Mode::Desktop {
+            if let Some(host) = platform::desktop_host() {
+                match platform::set_desktop(self.hwnd, Some(host)) {
+                    Ok(()) => self.desktop = Some(host),
+                    Err(e) => {
+                        self.error = Some(e);
+                        self.model.settings.mode = Mode::Floating;
+                        self.state.mode(Mode::Floating);
+                        return;
+                    }
+                }
+            } else {
+                self.error = Some("桌面宿主不可用，已恢复普通悬浮窗".into());
+                self.mode(Mode::Floating);
+                return;
+            }
+        }
+        self.model.settings.mode = mode;
+        self.state.mode(mode);
+        self.scene = None;
+        self.background = None;
+        self.visible = true;
+        unsafe {
+            let top = if mode == Mode::Edge || self.model.settings.topmost {
+                HWND_TOPMOST
+            } else {
+                HWND_NOTOPMOST
+            };
+            let _ = SetWindowPos(
+                self.hwnd,
+                Some(top),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+            let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+        }
+        self.reposition();
+        self.save();
+    }
+    fn reposition(&mut self) {
+        let cfg = &self.model.settings;
+        let work = platform::primary().rcWork;
+        let s = self.scale;
+        let w = (cfg.width as f32 * s) as i32;
+        let h = ((cfg.height as f32 * s) as i32).min(work.bottom - work.top - 32);
+        let (x, y) = if cfg.mode == Mode::Edge {
+            let shown = if cfg.side == Side::Right {
+                work.right - w - 12
+            } else {
+                work.left + 12
+            };
+            let hidden = if cfg.side == Side::Right {
+                work.right + 8
+            } else {
+                work.left - w - 8
+            };
+            let p = 1.0 - (1.0 - self.state.progress).powi(3);
+            (
+                (hidden as f32 + (shown - hidden) as f32 * p) as i32,
+                work.top + ((work.bottom - work.top - h) / 2).max(12),
+            )
+        } else {
+            platform::clamp_position(cfg.x, cfg.y, w, h)
+        };
+        let mut point = POINT { x, y };
+        if let Some(host) = self.desktop {
+            unsafe {
+                let _ = ScreenToClient(host, &mut point);
+            }
+        }
+        unsafe {
+            let _ = SetWindowPos(
+                self.hwnd,
+                None,
+                point.x,
+                point.y,
+                w,
+                h,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+    fn tick(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_tick).as_secs_f32() * 1000.0;
+        self.last_tick = now;
+        let mut p = POINT::default();
+        unsafe {
+            let _ = GetCursorPos(&mut p);
+        }
+        let mut r = RECT::default();
+        unsafe {
+            let _ = GetWindowRect(self.hwnd, &mut r);
+        }
+        let inside =
+            p.x >= r.left - 8 && p.x < r.right + 8 && p.y >= r.top - 8 && p.y < r.bottom + 8;
+        let cfg = &self.model.settings;
+        self.state.pinned = cfg.pinned;
+        self.state.blocked = self.in_menu
+            || settings_ui::is_open()
+            || self.moving
+            || COMPOSING.with(Cell::get)
+            || unsafe { GetFocus() } == self.input
+            || (!self.inline.is_invalid() && unsafe { GetFocus() } == self.inline);
+        let primary = platform::primary().rcMonitor;
+        let at = if cfg.side == Side::Right {
+            (p.x - primary.right).abs() <= 2
+        } else {
+            (p.x - primary.left).abs() <= 2
+        };
+        let edge = at
+            && p.y > primary.top + 48
+            && p.y < primary.bottom - 48
+            && (!cfg.fullscreen_pause || !platform::fullscreen_other(self.hwnd));
+        if self.visible || self.state.phase == Phase::Hidden {
+            self.state.pointer(
+                self.start.elapsed().as_millis() as u64,
+                inside,
+                edge,
+                cfg.dwell_ms,
+                cfg.hide_ms,
+                cfg.auto_hide && self.start.elapsed().as_secs() >= 12,
+            );
+        }
+        let mut animation = BOOL(1);
+        unsafe {
+            let _ = SystemParametersInfoW(
+                SPI_GETCLIENTAREAANIMATION,
+                0,
+                Some(&mut animation as *mut _ as *mut _),
+                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+            );
+        }
+        if self.state.step(elapsed, !animation.as_bool()) {
+            if !self.visible && self.state.target == 1.0 {
+                self.visible = true;
+                unsafe {
+                    let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+                }
+            }
+            self.reposition();
+            self.dirty = true;
+        }
+        if self.state.phase == Phase::Hidden && self.visible {
+            self.visible = false;
+            unsafe {
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
+            }
+            self.scene = None;
+            self.background = None;
+            self.surface.release(&self.gfx);
+        }
+        unsafe {
+            if let Some(host) = self.desktop {
+                if !IsWindow(Some(host)).as_bool() {
+                    let _ = platform::set_desktop(self.hwnd, None);
+                    self.desktop = None;
+                    self.model.settings.mode = Mode::Floating;
+                    self.state.mode(Mode::Floating);
+                    self.error =
+                        Some("资源管理器已重启；已恢复悬浮窗，可从菜单重新固定到桌面".into());
+                    self.show(false);
+                    self.save();
+                }
+            }
+        }
+        if self.visible {
+            self.arrange_background();
+        }
+        let interval = if (self.state.progress - self.state.target).abs() > 0.001 {
+            16
+        } else {
+            80
+        };
+        unsafe {
+            SetTimer(Some(self.hwnd), 1, interval, None);
+        }
+    }
+    fn arrange_background(&mut self) {
+        let mut r = RECT::default();
+        unsafe {
+            let _ = GetWindowRect(self.hwnd, &mut r);
+        }
+        let area = RECT {
+            left: r.left - 16,
+            top: r.top - 16,
+            right: r.right + 16,
+            bottom: r.bottom + 16,
+        };
+        if self.scene.is_none() {
+            let hwnd = self.hwnd.0 as usize;
+            self.scene = Scene::new(
+                area,
+                Arc::new(move || unsafe {
+                    let _ = PostMessageW(Some(HWND(hwnd as *mut _)), FRAME, WPARAM(0), LPARAM(0));
+                }),
+                &self.gfx,
+            );
+        }
+        if let Some(scene) = &mut self.scene {
+            let over = if self.desktop.is_some() {
+                unsafe { GetShellWindow() }
+            } else {
+                self.hwnd
+            };
+            if scene.arrange(area, over) || scene.fresh() {
+                scene.want();
+            }
+            if let Some(capture) = scene.ready() {
+                match capture.bitmap_into(
+                    &self.gfx.dc,
+                    self.scale,
+                    self.background.as_ref().map(|b| &b.0),
+                ) {
+                    Ok(bitmap) => {
+                        self.background = Some((bitmap, capture.rect));
+                        self.dirty = true;
+                    }
+                    Err(e) => self.error = Some(format!("背景纹理不可用：{e}")),
+                }
+            }
+        }
+    }
+    fn draw(&mut self) -> Result<()> {
+        if !self.visible {
+            return Ok(());
+        }
+        let s = self.scale;
+        let (w, h) = (self.size.0 as f32 / s, self.size.1 as f32 / s);
+        if self.lens.as_ref().is_none_or(|l| !l.matches(self.size, s)) {
+            self.lens = Some(Lens::new(&self.gfx, self.size, s)?);
+        }
+        let dark = match self.model.settings.theme {
+            Theme::System => platform::system_dark(),
+            Theme::Dark => true,
+            Theme::Light => false,
+        };
+        let ink = gfx::color(if dark { 0xf4f4f5 } else { 0x202630 }, 1.0);
+        let muted = gfx::color(if dark { 0xaeb7c2 } else { 0x596474 }, 1.0);
+        let accent = gfx::color(0x378cf5, 1.0);
+        let mut bounds = RECT::default();
+        unsafe {
+            let _ = GetWindowRect(self.hwnd, &mut bounds);
+        }
+        let background = self.background.as_ref();
+        let mut rows = Vec::new();
+        let mut y = 140.0 - self.scroll;
+        for todo in &self.model.todos {
+            let layout = self.gfx.layout(&todo.text, 15.0, w - 124.0)?;
+            let mut metrics = DWRITE_TEXT_METRICS::default();
+            unsafe {
+                layout.GetMetrics(&mut metrics)?;
+            }
+            let height = (metrics.height + 24.0).max(50.0);
+            rows.push(Row {
+                id: todo.id.clone(),
+                top: y,
+                height,
+            });
+            y += height;
+        }
+        let limit = (y + self.scroll - h + 55.0).max(0.0);
+        if self.scroll > limit {
+            self.scroll = limit;
+            self.dirty = true;
+        }
+        self.rows = rows;
+        self.surface.draw(&self.gfx, self.size, s, |dc| unsafe {
+            let rr = D2D1_ROUNDED_RECT {
+                rect: gfx::rect(1.0, 1.0, w - 2.0, h - 2.0),
+                radiusX: 24.0,
+                radiusY: 24.0,
+            };
+            let geometry = self.gfx.factory.CreateRoundedRectangleGeometry(&rr)?;
+            let mut params = D2D1_LAYER_PARAMETERS1 {
+                contentBounds: gfx::rect(0.0, 0.0, w, h),
+                geometricMask: std::mem::ManuallyDrop::new(Some(geometry.cast()?)),
+                maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+                maskTransform: windows_numerics::Matrix3x2::identity(),
+                opacity: 1.0,
+                ..Default::default()
+            };
+            dc.PushLayer(&params, None);
+            if let Some((bitmap, area)) = background {
+                self.lens.as_ref().unwrap().draw(
+                    dc,
+                    bitmap,
+                    (
+                        (area.left - bounds.left) as f32 / s,
+                        (area.top - bounds.top) as f32 / s,
+                    ),
+                    6.0,
+                )?;
+            }
+            gfx::fill(
+                dc,
+                gfx::rect(0.0, 0.0, w, h),
+                24.0,
+                gfx::color(
+                    if dark { 0x171e2a } else { 0xf1f5fa },
+                    if background.is_some() {
+                        self.model.settings.opacity as f32 / 100.0
+                    } else {
+                        0.98
+                    },
+                ),
+            )?;
+            gfx::text(dc, &self.gfx.layout("轻待", 21.0, 100.0)?, 24.0, 18.0, ink)?;
+            gfx::text(
+                dc,
+                &self.gfx.layout("LightDo", 10.5, 100.0)?,
+                77.0,
+                28.0,
+                muted,
+            )?;
+            for (label, x) in [
+                ("⚙", w - 128.0),
+                (
+                    if self.model.settings.pinned {
+                        "◆"
+                    } else {
+                        "◇"
+                    },
+                    w - 87.0,
+                ),
+                ("×", w - 46.0),
+            ] {
+                gfx::text(dc, &self.gfx.layout(label, 20.0, 30.0)?, x, 20.0, muted)?;
+            }
+            gfx::fill(
+                dc,
+                gfx::rect(20.0, 72.0, w - 40.0, 49.0),
+                13.0,
+                gfx::color(if dark { 0x2f343b } else { 0xffffff }, 0.55),
+            )?;
+            gfx::text(
+                dc,
+                &self.gfx.layout("+", 25.0, 30.0)?,
+                w - 56.0,
+                79.0,
+                accent,
+            )?;
+            dc.PushAxisAlignedClip(
+                &gfx::rect(16.0, 133.0, w - 32.0, h - 183.0),
+                D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            );
+            if self.model.todos.is_empty() {
+                gfx::text(
+                    dc,
+                    &self.gfx.layout("给此刻，留一点轻盈。", 16.0, w - 64.0)?,
+                    32.0,
+                    184.0,
+                    muted,
+                )?;
+                gfx::text(
+                    dc,
+                    &self.gfx.layout("在上方写下第一件事", 12.0, w - 64.0)?,
+                    32.0,
+                    218.0,
+                    muted,
+                )?;
+            }
+            for (row, todo) in self.rows.iter().zip(&self.model.todos) {
+                if row.top + row.height < 133.0 || row.top > h - 50.0 {
+                    continue;
+                }
+                if self.hover.as_ref() == Some(&todo.id) || self.selected.as_ref() == Some(&todo.id)
+                {
+                    gfx::fill(
+                        dc,
+                        gfx::rect(18.0, row.top, w - 36.0, row.height - 4.0),
+                        9.0,
+                        gfx::color(if dark { 0xffffff } else { 0x254b75 }, 0.07),
+                    )?;
+                }
+                let check = D2D1_ELLIPSE {
+                    point: Vector2 {
+                        X: 35.0,
+                        Y: row.top + 21.0,
+                    },
+                    radiusX: 8.0,
+                    radiusY: 8.0,
+                };
+                let brush =
+                    dc.CreateSolidColorBrush(&if todo.done { accent } else { muted }, None)?;
+                if todo.done {
+                    dc.FillEllipse(&check, &brush);
+                    gfx::text(
+                        dc,
+                        &self.gfx.layout("✓", 12.0, 20.0)?,
+                        28.5,
+                        row.top + 12.5,
+                        gfx::color(0xffffff, 1.0),
+                    )?;
+                } else {
+                    dc.DrawEllipse(&check, &brush, 1.2, None)
+                }
+                if self.editing.as_ref() != Some(&todo.id) {
+                    let layout = self.gfx.layout(&todo.text, 15.0, w - 124.0)?;
+                    if todo.done {
+                        layout.SetStrikethrough(
+                            true,
+                            DWRITE_TEXT_RANGE {
+                                startPosition: 0,
+                                length: todo.text.encode_utf16().count() as u32,
+                            },
+                        )?;
+                    }
+                    gfx::text(
+                        dc,
+                        &layout,
+                        58.0,
+                        row.top + 9.0,
+                        if todo.done { muted } else { ink },
+                    )?;
+                }
+                if self.hover.as_ref() == Some(&todo.id) {
+                    gfx::text(
+                        dc,
+                        &self.gfx.layout("×", 18.0, 22.0)?,
+                        w - 49.0,
+                        row.top + 10.0,
+                        muted,
+                    )?;
+                }
+                gfx::line(
+                    dc,
+                    (58.0, row.top + row.height - 4.0),
+                    (w - 28.0, row.top + row.height - 4.0),
+                    gfx::color(if dark { 0xffffff } else { 0x000000 }, 0.06),
+                    0.6,
+                )?;
+            }
+            dc.PopAxisAlignedClip();
+            let status = self.error.as_deref().unwrap_or(if background.is_none() {
+                "玻璃降级 · 正在等待真实背景"
+            } else if !self.model.settings.introduced {
+                "推向主屏右边缘呼出 · Ctrl+Alt+L"
+            } else {
+                match self.model.settings.mode {
+                    Mode::Edge => "边缘面板",
+                    Mode::Floating => "悬浮窗",
+                    Mode::Desktop => "桌面组件",
+                }
+            });
+            gfx::text(
+                dc,
+                &self.gfx.layout(status, 10.5, w - 48.0)?,
+                24.0,
+                h - 35.0,
+                muted,
+            )?;
+            dc.PopLayer();
+            std::mem::ManuallyDrop::drop(&mut params.geometricMask);
+            let rim = dc.CreateSolidColorBrush(
+                &gfx::color(0xffffff, if dark { 0.25 } else { 0.75 }),
+                None,
+            )?;
+            dc.DrawRoundedRectangle(&rr, &rim, 1.0, None);
+            Ok(())
+        })?;
+        self.layout_editors();
+        self.dirty = false;
+        Ok(())
+    }
+    fn menu(&mut self) {
+        self.in_menu = true;
+        unsafe {
+            let menu = CreatePopupMenu().unwrap();
+            for (id, label) in [
+                (201, "边缘面板"),
+                (202, "独立悬浮窗"),
+                (203, "桌面组件"),
+                (204, "停靠左侧"),
+                (205, "停靠右侧"),
+                (206, "固定展开"),
+                (207, "始终置顶"),
+                (208, "锁定位置"),
+                (209, "浅色玻璃"),
+                (210, "深色玻璃"),
+                (211, "跟随系统"),
+                (212, "材质更透明"),
+                (213, "材质更浓"),
+                (214, "设置与诊断"),
+                (215, "返回主显示器"),
+                (216, "开机启动"),
+                (217, "导入 QuietDo"),
+                (218, "退出轻待"),
+            ] {
+                let _ = AppendMenuW(menu, MF_STRING, id, &HSTRING::from(label));
+            }
+            let mut p = POINT::default();
+            let _ = GetCursorPos(&mut p);
+            let _ = SetForegroundWindow(self.hwnd);
+            let id = TrackPopupMenu(
+                menu,
+                TPM_RETURNCMD | TPM_RIGHTBUTTON,
+                p.x,
+                p.y,
+                Some(0),
+                self.hwnd,
+                None,
+            )
+            .0 as usize;
+            let _ = DestroyMenu(menu);
+            self.in_menu = false;
+            self.command(id);
+        }
+    }
+    fn command(&mut self, id: usize) {
+        match id {
+            201 => self.mode(Mode::Edge),
+            202 => self.mode(Mode::Floating),
+            203 => self.mode(Mode::Desktop),
+            204 | 205 => {
+                self.model.settings.side = if id == 204 { Side::Left } else { Side::Right };
+                self.reposition();
+            }
+            206 => self.model.settings.pinned = !self.model.settings.pinned,
+            207 => {
+                self.model.settings.topmost = !self.model.settings.topmost;
+                unsafe {
+                    let _ = SetWindowPos(
+                        self.hwnd,
+                        Some(if self.model.settings.topmost {
+                            HWND_TOPMOST
+                        } else {
+                            HWND_NOTOPMOST
+                        }),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                    );
+                }
+            }
+            208 => {
+                self.model.settings.locked = !self.model.settings.locked;
+                LOCKED.with(|l| l.set(self.model.settings.locked));
+            }
+            209 => self.model.settings.theme = Theme::Light,
+            210 => self.model.settings.theme = Theme::Dark,
+            211 => self.model.settings.theme = Theme::System,
+            212 => {
+                self.model.settings.opacity = self.model.settings.opacity.saturating_sub(10).max(10)
+            }
+            213 => self.model.settings.opacity = (self.model.settings.opacity + 10).min(90),
+            214 => self.open_settings(),
+            215 => {
+                self.model.settings.x = platform::primary().rcWork.left + 80;
+                self.model.settings.y = platform::primary().rcWork.top + 80;
+                self.show(false);
+            }
+            216 => {
+                let wanted = !self.model.settings.autostart;
+                match platform::autostart(wanted) {
+                    Ok(()) => self.model.settings.autostart = wanted,
+                    Err(e) => self.error = Some(e),
+                }
+            }
+            217 => {
+                let p = std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default())
+                    .join("com.quietdo.app/todos.json");
+                match std::fs::read_to_string(p) {
+                    Ok(text) => {
+                        if unsafe {
+                            MessageBoxW(
+                                Some(self.hwnd),
+                                w!("复制导入 QuietDo 的任务？原文件保持不变，重复 ID 跳过。"),
+                                w!("本地导入"),
+                                MB_YESNO | MB_ICONQUESTION,
+                            )
+                        } == IDYES
+                        {
+                            match self.model.import(&text) {
+                                Ok(_) => {}
+                                Err(e) => self.error = Some(e),
+                            }
+                        }
+                    }
+                    Err(e) => self.error = Some(format!("无法读取 QuietDo 数据：{e}")),
+                }
+            }
+            218 => {
+                if self.store.save(&self.model).is_ok() {
+                    self.quit = true
+                } else {
+                    self.message("退出前保存失败，请修复存储问题后重试。");
+                }
+            }
+            _ => {}
+        }
+        self.save();
+    }
+    fn event(&mut self, e: Event) {
+        match e.msg {
+            settings_ui::CHANGED => {
+                if let Some(settings) = settings_ui::take() {
+                    self.apply_settings(settings);
+                }
+            }
+            KEY_NAV => {
+                if let Some(first) = self.model.todos.first() {
+                    self.selected = Some(first.id.clone());
+                    unsafe {
+                        let _ = SetFocus(Some(self.hwnd));
+                    }
+                    self.dirty = true;
+                }
+            }
+            WM_KEYDOWN => {
+                let key = e.w.0 as u16;
+                if key == VK_F10.0 {
+                    self.menu();
+                } else if key == VK_ESCAPE.0 {
+                    self.cancel(self.hwnd);
+                } else if key == VK_TAB.0 {
+                    self.activate_input();
+                } else if key == VK_UP.0 || key == VK_DOWN.0 {
+                    if !self.model.todos.is_empty() {
+                        let current = self
+                            .selected
+                            .as_ref()
+                            .and_then(|id| self.model.todos.iter().position(|t| &t.id == id))
+                            .unwrap_or(0);
+                        let next = if key == VK_UP.0 {
+                            current.saturating_sub(1)
+                        } else {
+                            (current + 1).min(self.model.todos.len() - 1)
+                        };
+                        self.selected = Some(self.model.todos[next].id.clone());
+                        if let Some(row) = self.rows.get(next) {
+                            let h = self.size.1 as f32 / self.scale;
+                            if row.top < 140.0 {
+                                self.scroll = (self.scroll + row.top - 140.0).max(0.0);
+                            } else if row.top + row.height > h - 50.0 {
+                                self.scroll += row.top + row.height - h + 50.0;
+                            }
+                        }
+                        self.dirty = true;
+                    }
+                } else if let Some(id) = self.selected.clone() {
+                    if key == VK_RETURN.0 {
+                        self.start_edit(id);
+                    } else if key == VK_SPACE.0 {
+                        self.model.toggle(&id);
+                        self.save();
+                    } else if key == VK_DELETE.0 {
+                        self.model.delete(&id);
+                        self.selected = None;
+                        self.save();
+                    }
+                }
+            }
+            WM_CLOSE => self.hide_tray(),
+            WM_DESTROY => self.quit = true,
+            WM_TIMER => self.tick(),
+            FRAME => {
+                self.arrange_background();
+                self.dirty = true;
+            }
+            COMMIT => self.commit(HWND(e.w.0 as *mut _), e.l.0 != 0),
+            CANCEL => self.cancel(HWND(e.w.0 as *mut _)),
+            WM_SIZE => {
+                let mut r = RECT::default();
+                unsafe {
+                    let _ = GetClientRect(self.hwnd, &mut r);
+                }
+                self.size = (
+                    (r.right - r.left).max(1) as u32,
+                    (r.bottom - r.top).max(1) as u32,
+                );
+                if self.moving {
+                    self.model.settings.width = (self.size.0 as f32 / self.scale) as i32;
+                    self.model.settings.height = (self.size.1 as f32 / self.scale) as i32;
+                }
+                self.dirty = true;
+                self.layout_editors();
+            }
+            WM_MOVE => {
+                self.dirty = true;
+            }
+            WM_ENTERSIZEMOVE => {
+                self.moving = true;
+                if self.model.settings.mode == Mode::Edge {
+                    self.mode(Mode::Floating);
+                }
+            }
+            WM_EXITSIZEMOVE => {
+                self.moving = false;
+                let mut r = RECT::default();
+                unsafe {
+                    let _ = GetWindowRect(self.hwnd, &mut r);
+                }
+                self.model.settings.x = r.left;
+                self.model.settings.y = r.top;
+                let work = platform::primary().rcWork;
+                if (r.left - work.left).abs() < 28 {
+                    self.model.settings.side = Side::Left;
+                    self.mode(Mode::Edge)
+                } else if (r.right - work.right).abs() < 28 {
+                    self.model.settings.side = Side::Right;
+                    self.mode(Mode::Edge)
+                }
+                self.save();
+            }
+            WM_DPICHANGED => {
+                self.scale = (e.w.0 & 0xffff) as f32 / 96.0;
+                SCALE.with(|s| s.set(self.scale));
+                self.lens = None;
+                self.background = None;
+                self.scene = None;
+                self.reposition();
+                self.dirty = true;
+            }
+            WM_DISPLAYCHANGE => {
+                self.scene = None;
+                self.background = None;
+                self.reposition();
+            }
+            WM_SETTINGCHANGE => self.dirty = true,
+            WM_HOTKEY => {
+                if self.visible && !self.state.blocked && self.model.settings.mode == Mode::Edge {
+                    self.state.hide()
+                } else {
+                    self.show(true)
+                }
+            }
+            WM_RBUTTONUP => self.menu(),
+            TRAY => match e.l.0 as u32 {
+                WM_LBUTTONUP => self.show(true),
+                WM_RBUTTONUP => self.menu(),
+                _ => {}
+            },
+            WM_LBUTTONUP | WM_LBUTTONDBLCLK => {
+                let x = (e.l.0 as i16) as f32 / self.scale;
+                let y = ((e.l.0 >> 16) as i16) as f32 / self.scale;
+                let w = self.size.0 as f32 / self.scale;
+                if y < 60.0 {
+                    if x > w - 55.0 {
+                        self.hide_tray()
+                    } else if x > w - 98.0 {
+                        self.model.settings.pinned = !self.model.settings.pinned;
+                        self.save();
+                    } else if x > w - 145.0 {
+                        self.menu()
+                    }
+                } else if (72.0..122.0).contains(&y) && x > w - 66.0 {
+                    self.commit(self.input, false)
+                } else if let Some(id) = self
+                    .rows
+                    .iter()
+                    .find(|r| {
+                        y >= r.top
+                            && y < r.top + r.height
+                            && y < self.size.1 as f32 / self.scale - 50.0
+                    })
+                    .map(|r| r.id.clone())
+                {
+                    if x < 52.0 {
+                        self.model.toggle(&id);
+                        self.save()
+                    } else if x > w - 58.0 {
+                        self.model.delete(&id);
+                        self.save()
+                    } else if e.msg == WM_LBUTTONDBLCLK {
+                        self.start_edit(id)
+                    } else {
+                        self.selected = Some(id);
+                        unsafe {
+                            let _ = SetFocus(Some(self.hwnd));
+                        }
+                        self.dirty = true;
+                    }
+                }
+            }
+            WM_MOUSEMOVE => {
+                let y = ((e.l.0 >> 16) as i16) as f32 / self.scale;
+                let hovered = self
+                    .rows
+                    .iter()
+                    .find(|r| y >= r.top && y < r.top + r.height)
+                    .map(|r| r.id.clone());
+                if hovered != self.hover {
+                    self.hover = hovered;
+                    self.dirty = true;
+                }
+            }
+            WM_MOUSEWHEEL => {
+                if self.editing.is_none() {
+                    self.scroll =
+                        (self.scroll - ((e.w.0 >> 16) as i16) as f32 / 120.0 * 56.0).max(0.0);
+                    self.dirty = true;
+                }
+            }
+            WM_COMMAND if (201..=218).contains(&(e.w.0 & 0xffff)) => self.command(e.w.0 & 0xffff),
+            _ => {
+                if e.msg == self.taskbar_created {
+                    self.tray(true);
+                }
+            }
+        }
+    }
+    fn tray(&self, add: bool) {
+        unsafe {
+            let mut info = NOTIFYICONDATAW {
+                cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.hwnd,
+                uID: 1,
+                uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
+                uCallbackMessage: TRAY,
+                hIcon: LoadIconW(None, IDI_APPLICATION).unwrap_or_default(),
+                ..Default::default()
+            };
+            let tip: Vec<u16> = "轻待 LightDo".encode_utf16().collect();
+            info.szTip[..tip.len()].copy_from_slice(&tip);
+            let _ = Shell_NotifyIconW(if add { NIM_ADD } else { NIM_DELETE }, &info);
+        }
+    }
+}
+pub fn run() -> std::result::Result<(), String> {
+    unsafe { run_inner().map_err(|e| e.to_string()) }
+}
+unsafe fn run_inner() -> Result<()> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let mutex = CreateMutexW(None, false, w!("Local\\LightDo.SingleInstance"))?;
+        if GetLastError() == ERROR_ALREADY_EXISTS {
+            if let Ok(hwnd) = FindWindowW(w!("LightDo.Panel"), None) {
+                let _ = PostMessageW(Some(hwnd), WM_HOTKEY, WPARAM(1), LPARAM(0));
+            }
+            let _ = CloseHandle(mutex);
+            return Ok(());
+        }
+        let instance = GetModuleHandleW(None)?;
+        let class = WNDCLASSW {
+            style: CS_DBLCLKS,
+            lpfnWndProc: Some(procedure),
+            hInstance: instance.into(),
+            lpszClassName: w!("LightDo.Panel"),
+            hCursor: LoadCursorW(None, IDC_ARROW)?,
+            ..Default::default()
+        };
+        RegisterClassW(&class);
+        let hwnd = CreateWindowExW(
+            WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+            w!("LightDo.Panel"),
+            w!("轻待 LightDo"),
+            WS_POPUP | WS_CLIPCHILDREN,
+            100,
+            100,
+            400,
+            600,
+            None,
+            None,
+            Some(instance.into()),
+            None,
+        )?;
+        MAIN.with(|m| m.set(hwnd));
+        let path =
+            std::path::PathBuf::from(std::env::var_os("LIGHTDO_DATA_DIR").unwrap_or_else(|| {
+                std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default())
+                    .join("LightDo")
+                    .into_os_string()
+            }))
+            .join("state.json");
+        let (store, loaded) = Store::open(path);
+        let (mut model, error) = match loaded {
+            Ok(model) => (model, None),
+            Err(error) => (Model::default(), Some(error)),
+        };
+        model.settings.autostart = platform::autostart_enabled();
+        let scale = GetDpiForWindow(hwnd) as f32 / 96.0;
+        SCALE.with(|s| s.set(scale));
+        LOCKED.with(|l| l.set(model.settings.locked));
+        let font = CreateFontW(
+            -(15.0 * scale) as i32,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY,
+            DEFAULT_PITCH.0 as u32,
+            w!("Microsoft YaHei UI"),
+        );
+        let gfx = Rc::new(Gfx::new()?);
+        let surface = Surface::new(&gfx, hwnd)?;
+        let mut state = WindowState::default();
+        state.mode(model.settings.mode);
+        let initial_mode = model.settings.mode;
+        let mut app = App {
+            hwnd,
+            input: HWND::default(),
+            inline: HWND::default(),
+            editing: None,
+            store,
+            model,
+            gfx,
+            surface,
+            scene: None,
+            lens: None,
+            background: None,
+            state,
+            start: Instant::now(),
+            last_tick: Instant::now(),
+            scale,
+            size: ((400.0 * scale) as u32, (600.0 * scale) as u32),
+            rows: Vec::new(),
+            scroll: 0.0,
+            hover: None,
+            selected: None,
+            dirty: true,
+            visible: true,
+            in_menu: false,
+            moving: false,
+            desktop: None,
+            error,
+            quit: false,
+            font,
+            taskbar_created: RegisterWindowMessageW(w!("TaskbarCreated")),
+        };
+        app.input = app.editor(INPUT)?;
+        SendMessageW(
+            app.input,
+            EM_SETCUEBANNER,
+            Some(WPARAM(1)),
+            Some(LPARAM(w!("写下一件事…").0 as isize)),
+        );
+        app.reposition();
+        app.tray(true);
+        if RegisterHotKey(
+            Some(hwnd),
+            1,
+            HOT_KEY_MODIFIERS(app.model.settings.hotkey_mod) | MOD_NOREPEAT,
+            app.model.settings.hotkey_vk,
+        )
+        .is_err()
+        {
+            app.error = Some("快捷键 Ctrl+Alt+L 已被其他程序占用，请从托盘找回".into());
+        }
+        SetTimer(Some(hwnd), 1, 80, None);
+        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        if initial_mode == Mode::Desktop {
+            app.model.settings.mode = Mode::Floating;
+            app.mode(Mode::Desktop);
+        }
+        while !app.quit {
+            let mut msg = MSG::default();
+            if GetMessageW(&mut msg, None, 0, 0).0 <= 0 {
+                break;
+            }
+            if !settings_ui::dialog_message(&msg) {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+            loop {
+                let event = EVENTS.with(|e| e.borrow_mut().pop_front());
+                if let Some(event) = event {
+                    app.event(event)
+                } else {
+                    break;
+                }
+            }
+            if app.dirty {
+                if let Err(e) = app.draw() {
+                    app.error = Some(format!("绘制失败：{e}"));
+                }
+            }
+        }
+        settings_ui::close();
+        app.tray(false);
+        let _ = UnregisterHotKey(Some(hwnd), 1);
+        let _ = KillTimer(Some(hwnd), 1);
+        app.scene = None;
+        app.surface.release(&app.gfx);
+        let _ = DestroyWindow(hwnd);
+        let _ = DeleteObject(font.into());
+        let _ = CloseHandle(mutex);
+        Ok(())
+    }
+}

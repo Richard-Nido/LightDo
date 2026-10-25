@@ -1,0 +1,7 @@
+/target/
+/.tools/
+/.reference/
+/dist/
+/local-evidence/
+*.tmp
+*.log
