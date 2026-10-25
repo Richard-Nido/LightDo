@@ -2,7 +2,9 @@
 
 状态：开发中，尚未达到正式发布门槛。
 
-当前阻塞已确认：WTS 当前会话 `lockFlag=0`（锁定），窗口捕获为全黑且无法激活。面板 visible=true、minimized=false、cloaked=0；当前 GetDpiForWindow=144（150%）。这是外部桌面状态，不能继续真实交互验收。先前针对旧子窗口方案的 Win+D 手工问题已作废。
+此前锁屏阻塞已解除：用户回复桌面已解锁，WTS 复核 `lockFlag=1, locked=false`。当前 GetDpiForWindow=144（150%），新版构建已重新启动进行实际交互。用户补交的「可见/可输入/层级正常」对应旧子窗口方案，只记入历史反馈；新版桌面模式仍待重新反馈，不能据此通过。
+
+本轮菜单/设置归并和实际画面见 [menu-redesign.md](menu-redesign.md)。新增中文与 Emoji 任务、首尾空白清理、输入清空且保留焦点、JSON 保存、浅深色菜单和主题切换、子菜单禁用状态、F10 打开与 Esc 关闭已观察。原生菜单方向键及设置下拉框连续键盘选择受自动化激活主窗影响，待人工验证。
 
 | 项目 | 方法/环境 | 当前结果 |
 |---|---|---|
@@ -14,7 +16,7 @@
 | 边缘/悬浮/桌面 | 旧方案单 HWND 菜单切换；后续受控捕获反例 | 旧 SetParent 方案因自身捕获风险否决；已改为明确的桌面 Z 序维护，新版三种模式均待解锁后复测 |
 | 中文 IME/候选窗 | 实际按 n、i、Return；行内 n、i、Space、Esc；独立原生编辑控件 | PASS 当前缩放：候选窗出现；组合 Enter 未新增任务，第二次 Enter 才新增；Space 选出“你”；Esc 恢复原文。证据 images/p0-ime-inline.jpg |
 | Unicode 待办新增 | 原生输入“中文待办 · LightDo 🙂”，Enter，读取隔离数据 | PASS；首尾空白去除，顶部新增，输入清空且保留焦点 |
-| 自动化测试 | cargo test --locked --lib | 17 PASS，9 个真实桌面测试/实验明确忽略；没有把这些忽略项写成通过 |
+| 自动化测试 | cargo test --locked --lib | 19 PASS，9 个真实桌面测试/实验明确忽略；新增模式偏好跨模式持久化及鼠标返回反向展开测试，没有把忽略项写成通过 |
 | 原生捕获集成测试 | scene_first_frame_holds_the_windows / scene_shows / wanted_once_one_is_taken_another_is_read | 首帧和场景测试 PASS；连续帧测试首次 FAIL、重试 PASS，稳定性仍待排查，不能抹去失败 |
 | 连续帧补充复测 | 同一测试独立运行 5 次 | 5/5 PASS；不抹去首次 FAIL，且不等同于全部视觉验收 |
 | 桌面子窗口排除探索 | 白宿主/红子窗，对比设置排除标志前后 | FAIL：两组亮度均 0.21176487，不能排除自身，生产实现未采用该路径 |
@@ -47,4 +49,4 @@
 
 测试硬件：Intel Core i9-13900H、Intel UHD Graphics + RTX 4070 Laptop GPU。最终资源占用尚未测量，不引用上游宣传数字。图片 images/p0-ime-inline.jpg 是早期实际基线运行证据，只能证明当时的 IME 与背景效果，不能作为最新提交的整体验收截图。
 
-当前开发安装包为 0.1.0，361551 字节，未签名；SHA-256 为 `d13ac0258a4bc78ed931f8c3feeeffc25ed76b6680b49c00dd7b253378d24808`。程序 PE Machine=0x8664，资源版本 0.1.0，CompanyName=Yuan Haoran (Richard-Nido)。导入表没有 VC 运行库 DLL；只使用 Windows 系统 DLL。此开发包尚未完成实际运行和全交互验收，不能称为正式交付版。
+当前菜单改版开发安装包为 0.1.0，366495 字节，未签名；SHA-256 为 `fc8768e2731833b5e887f474c46d953c2ee629578bafbd57860a27b3a8c10908`。程序 PE Machine=0x8664，资源版本 0.1.0，CompanyName=Yuan Haoran (Richard-Nido)。导入表没有 VC 运行库 DLL；只使用 Windows 系统 DLL。此开发包尚未完成安装后全交互验收，不能称为正式交付版。历史 361551 字节的包已被这次开发构建替代。

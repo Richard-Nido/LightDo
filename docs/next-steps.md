@@ -4,9 +4,9 @@
 
 首先读 `Prompt/LightDo_Codex_Development_Prompt.md`、`docs/verification.md`、`docs/architecture.md`。上游 SHA 和许可见 THIRD_PARTY_NOTICES.md。
 
-## 当前阻塞
+## 当前接续状态
 
-Windows 会话经 WTS 只读诊断确认锁定（lockFlag=0）。不要在锁定桌面上注入输入，不要把黑色窗口捕获判为视觉通过。用户已被请求唤醒并解锁桌面。更早的 SetParent 旧方案 Win+D 手工问题已经作废。
+用户已解锁 Windows，WTS 已复核 lockFlag=1、locked=false。当前构建已重新实际运行。菜单/设置改版已实现并检查画面，见 menu-redesign.md。新版面板刚从菜单切到 Desktop；用户已被异步请求验证新版 Win+D 往返及原生菜单/设置下拉框键盘行为。此前用户的成功反馈属于已废弃的旧方案，不能混用为新版验收。
 
 当前生产候选代码使用顶层窗口 + 桌面 Z 序维护，不能恢复被否决的桌面子窗采样方案。子窗排除实验的真实结果是 FAIL，两组采样亮度都约 0.21176487；该实验不是产品验收通过项。
 

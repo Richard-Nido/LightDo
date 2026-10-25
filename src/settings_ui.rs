@@ -26,13 +26,19 @@ const TITLE: i32 = 311;
 const FULL: i32 = 312;
 const KEY: i32 = 313;
 const START: i32 = 314;
-thread_local! {static UI:RefCell<Option<Ui>>=const{RefCell::new(None)};static PENDING:RefCell<Option<Settings>>=const{RefCell::new(None)};}
+const PAGES: i32 = 315;
+thread_local! {
+    static UI:RefCell<Option<Ui>>=const{RefCell::new(None)};
+    static PENDING:RefCell<Option<Settings>>=const{RefCell::new(None)};
+    static LAST_FOCUS:std::cell::Cell<HWND>=const{std::cell::Cell::new(HWND(std::ptr::null_mut()))};
+}
 struct Ui {
     hwnd: HWND,
     owner: HWND,
     font: HFONT,
     settings: Settings,
     scroll: i32,
+    pages: Vec<(usize, HWND)>,
 }
 pub fn take() -> Option<Settings> {
     PENDING.with(|p| p.borrow_mut().take())
@@ -43,6 +49,7 @@ pub fn is_open() -> bool {
 pub fn close() {
     let old = UI.with(|u| u.borrow_mut().take());
     if let Some(ui) = old {
+        LAST_FOCUS.with(|f| f.set(HWND::default()));
         unsafe {
             let _ = DestroyWindow(ui.hwnd);
             let _ = DeleteObject(ui.font.into());
@@ -155,6 +162,7 @@ unsafe fn populate(ui: &Ui) {
             c.hotkey_vk as usize | ((flags as usize) << 8),
             0,
         );
+        sync_mode_controls(ui.hwnd);
     }
 }
 unsafe fn sync_mode_controls(hwnd: HWND) {
@@ -173,6 +181,13 @@ unsafe fn sync_mode_controls(hwnd: HWND) {
                 control(hwnd, id),
                 enabled,
             );
+        }
+    }
+}
+unsafe fn show_page(ui: &Ui, page: usize) {
+    unsafe {
+        for (index, hwnd) in &ui.pages {
+            let _ = ShowWindow(*hwnd, if *index == page { SW_SHOWNA } else { SW_HIDE });
         }
     }
 }
@@ -233,6 +248,47 @@ unsafe fn read(ui: &Ui) -> std::result::Result<Settings, String> {
 }
 unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
     match msg {
+        WM_ACTIVATE => unsafe {
+            use windows::Win32::UI::Input::KeyboardAndMouse::{
+                GetFocus, IsWindowEnabled, SetFocus,
+            };
+            if w.0 & 0xffff == WA_INACTIVE as usize {
+                let focus = GetFocus();
+                if IsChild(hwnd, focus).as_bool() {
+                    LAST_FOCUS.with(|f| f.set(focus));
+                }
+            }
+            let result = DefWindowProcW(hwnd, msg, w, l);
+            if w.0 & 0xffff != WA_INACTIVE as usize {
+                let focus = LAST_FOCUS.with(|f| f.get());
+                if IsWindow(Some(focus)).as_bool()
+                    && IsWindowVisible(focus).as_bool()
+                    && IsWindowEnabled(focus).as_bool()
+                {
+                    let _ = SetFocus(Some(focus));
+                }
+            }
+            result
+        },
+        WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => unsafe {
+            let dc = HDC(w.0 as *mut _);
+            SetTextColor(dc, COLORREF(GetSysColor(COLOR_WINDOWTEXT)));
+            SetBkColor(dc, COLORREF(GetSysColor(COLOR_WINDOW)));
+            SetBkMode(dc, TRANSPARENT);
+            LRESULT(GetSysColorBrush(COLOR_WINDOW).0 as isize)
+        },
+        WM_NOTIFY => {
+            let header = unsafe { &*(l.0 as *const NMHDR) };
+            if header.idFrom == PAGES as usize && header.code == TCN_SELCHANGE {
+                let page = unsafe { send(hwnd, PAGES, TCM_GETCURSEL, 0, 0).0 } as usize;
+                UI.with(|u| {
+                    if let Some(ui) = u.borrow().as_ref() {
+                        unsafe { show_page(ui, page) };
+                    }
+                });
+            }
+            LRESULT(0)
+        }
         WM_SIZE => {
             unsafe {
                 let mut r = RECT::default();
@@ -403,6 +459,8 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             DEFAULT_PITCH.0 as u32,
             w!("Microsoft YaHei UI"),
         );
+        let page = std::cell::Cell::new(usize::MAX);
+        let pages = RefCell::new(Vec::new());
         let make = |class: &str,
                     label: &str,
                     id: i32,
@@ -432,39 +490,73 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
                 Some(WPARAM(font.0 as usize)),
                 Some(LPARAM(1)),
             );
+            if page.get() != usize::MAX {
+                pages.borrow_mut().push((page.get(), h));
+            }
             Ok(h)
         };
         let label = |t: &str, x, y, width| make("STATIC", t, 0, x, y, width, 22, 0);
-        label("外观与窗口", 24, 20, 400)?;
-        label("主题", 24, 58, 90)?;
+        let tabs = make(
+            "SysTabControl32",
+            "",
+            PAGES,
+            24,
+            20,
+            430,
+            38,
+            WS_TABSTOP.0 | TCS_FIXEDWIDTH,
+        )?;
+        SendMessageW(
+            tabs,
+            TCM_SETITEMSIZE,
+            None,
+            Some(LPARAM((143.0 * s) as isize | (((32.0 * s) as isize) << 16))),
+        );
+        for (index, title) in ["外观", "窗口", "通用"].iter().enumerate() {
+            let text = HSTRING::from(*title);
+            let item = TCITEMW {
+                mask: TCIF_TEXT,
+                pszText: windows::core::PWSTR(text.as_ptr() as *mut u16),
+                ..Default::default()
+            };
+            SendMessageW(
+                tabs,
+                TCM_INSERTITEMW,
+                Some(WPARAM(index)),
+                Some(LPARAM(&item as *const _ as isize)),
+            );
+        }
+        page.set(0);
+        label("让待办融入你的桌面", 24, 82, 410)?;
+        label("主题", 24, 132, 90)?;
         let theme = make(
             "COMBOBOX",
             "",
             THEME,
             140,
-            54,
+            128,
             290,
             160,
             CBS_DROPDOWNLIST as u32 | WS_TABSTOP.0,
         )?;
-        for t in ["跟随系统", "浅色玻璃", "深色玻璃"] {
+        for text in ["跟随系统", "浅色玻璃", "深色玻璃"] {
             SendMessageW(
                 theme,
                 CB_ADDSTRING,
                 None,
-                Some(LPARAM(HSTRING::from(t).as_ptr() as isize)),
+                Some(LPARAM(HSTRING::from(text).as_ptr() as isize)),
             );
         }
-        label("玻璃材质浓度", 24, 100, 110)?;
+        label("玻璃材质浓度", 24, 188, 110)?;
         let slider = make(
             "msctls_trackbar32",
             "",
             OPACITY,
             133,
-            94,
+            180,
             300,
-            32,
-            TBS_AUTOTICKS | WS_TABSTOP.0,
+            36,
+            WS_TABSTOP.0,
         )?;
         SendMessageW(
             slider,
@@ -472,108 +564,166 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             Some(WPARAM(1)),
             Some(LPARAM(10 | (90 << 16))),
         );
-        label("窗口形态", 24, 142, 90)?;
+        label("更通透", 140, 223, 90)?;
+        label("更柔和", 363, 223, 90)?;
+        make(
+            "BUTTON",
+            "显示标题栏",
+            TITLE,
+            24,
+            280,
+            300,
+            28,
+            BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0,
+        )?;
+        make(
+            "STATIC",
+            "浓度仅改变玻璃材质，文字与图标保持清晰。",
+            0,
+            24,
+            342,
+            420,
+            52,
+            0,
+        )?;
+
+        page.set(1);
+        label("窗口模式", 24, 86, 110)?;
         let mode = make(
             "COMBOBOX",
             "",
             MODE,
             140,
-            138,
+            82,
             290,
             160,
             CBS_DROPDOWNLIST as u32 | WS_TABSTOP.0,
         )?;
-        for t in ["边缘面板", "独立悬浮窗", "桌面组件"] {
+        for text in ["边缘面板", "独立悬浮窗", "桌面组件"] {
             SendMessageW(
                 mode,
                 CB_ADDSTRING,
                 None,
-                Some(LPARAM(HSTRING::from(t).as_ptr() as isize)),
+                Some(LPARAM(HSTRING::from(text).as_ptr() as isize)),
             );
         }
-        label("主屏停靠侧", 24, 184, 100)?;
+        label("主屏停靠侧", 24, 134, 110)?;
         let side = make(
             "COMBOBOX",
             "",
             SIDE,
             140,
-            180,
+            130,
             290,
             120,
             CBS_DROPDOWNLIST as u32 | WS_TABSTOP.0,
         )?;
-        for t in ["右侧", "左侧"] {
+        for text in ["右侧", "左侧"] {
             SendMessageW(
                 side,
                 CB_ADDSTRING,
                 None,
-                Some(LPARAM(HSTRING::from(t).as_ptr() as isize)),
+                Some(LPARAM(HSTRING::from(text).as_ptr() as isize)),
             );
         }
-        make(
-            "BUTTON",
-            "自动收回边缘面板",
-            AUTO,
-            24,
-            224,
-            220,
-            25,
-            BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0,
-        )?;
-        label("收回延迟（ms）", 24, 263, 130)?;
+        for (id, text, x, y) in [
+            (PIN, "固定展开", 24, 192),
+            (TOP, "始终置顶", 248, 192),
+            (LOCK, "锁定位置与尺寸", 24, 234),
+            (AUTO, "自动收回边缘面板", 24, 306),
+            (FULL, "全屏时暂停边缘呼出", 24, 438),
+        ] {
+            make(
+                "BUTTON",
+                text,
+                id,
+                x,
+                y,
+                224,
+                28,
+                BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0,
+            )?;
+        }
+        label("收回延迟（ms）", 24, 354, 130)?;
         make(
             "EDIT",
             "",
             HIDE,
             160,
-            258,
+            350,
             72,
-            26,
+            28,
             WS_BORDER.0 | WS_TABSTOP.0 | ES_NUMBER as u32,
         )?;
-        label("边缘停留（ms）", 248, 263, 130)?;
+        label("边缘停留（ms）", 248, 354, 130)?;
         make(
             "EDIT",
             "",
             DWELL,
             378,
-            258,
+            350,
             72,
-            26,
+            28,
             WS_BORDER.0 | WS_TABSTOP.0 | ES_NUMBER as u32,
         )?;
-        for (id, t, x, y) in [
-            (PIN, "固定展开（边缘）", 24, 307),
-            (TOP, "始终置顶（悬浮）", 248, 307),
-            (LOCK, "锁定位置与尺寸", 24, 342),
-            (TITLE, "显示标题栏", 248, 342),
-            (FULL, "全屏时暂停边缘呼出", 24, 377),
-            (START, "登录 Windows 时启动", 248, 377),
-        ] {
-            make(
-                "BUTTON",
-                t,
-                id,
-                x,
-                y,
-                224,
-                24,
-                BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0,
-            )?;
-        }
-        label("呼出快捷键", 24, 425, 110)?;
+        make(
+            "STATIC",
+            "停留越久，越不易误触。不适用于当前模式的选项会自动禁用。",
+            0,
+            24,
+            392,
+            420,
+            38,
+            0,
+        )?;
+
+        page.set(2);
+        label("呼出快捷键", 24, 100, 110)?;
         make(
             "msctls_hotkey32",
             "",
             KEY,
             140,
-            420,
+            94,
             290,
-            28,
+            30,
             WS_TABSTOP.0 | WS_BORDER.0,
         )?;
-        label("诊断", 24, 472, 90)?;
-        make("STATIC", diagnostic, 0, 24, 500, 430, 52, 0)?;
+        make(
+            "STATIC",
+            "呼出面板并进入输入；快捷键冲突时会提示。",
+            0,
+            24,
+            146,
+            420,
+            44,
+            0,
+        )?;
+        make(
+            "BUTTON",
+            "登录 Windows 时启动轻待",
+            START,
+            24,
+            216,
+            400,
+            28,
+            BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0,
+        )?;
+        label("运行状态", 24, 314, 400)?;
+        make("STATIC", diagnostic, 0, 24, 354, 420, 88, 0)?;
+        make(
+            "STATIC",
+            "任务只保存在本机，无需登录或联网。",
+            0,
+            24,
+            466,
+            420,
+            44,
+            0,
+        )?;
+
+        page.set(usize::MAX);
+        make("STATIC", "", 0, 24, 540, 430, 1, WS_BORDER.0)?;
         make(
             "BUTTON",
             "恢复默认设置",
@@ -610,8 +760,10 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             font,
             settings: settings.clone(),
             scroll: 0,
+            pages: pages.into_inner(),
         };
         populate(&ui);
+        show_page(&ui, 0);
         UI.with(|u| *u.borrow_mut() = Some(ui));
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = SetForegroundWindow(hwnd);

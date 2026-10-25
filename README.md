@@ -22,6 +22,8 @@ cargo run --locked
 
 右键面板打开模式与外观菜单。`Ctrl+Alt+L` 呼出并输入；双击任务编辑，Enter 提交，Esc 取消。数据位于 `%APPDATA%\LightDo\state.json`；开发验收可用环境变量 `LIGHTDO_DATA_DIR` 指向隔离目录，不会自动读取或修改 QuietDo 数据。
 
-完整开发检查和 EXE 打包入口见 [releasing.md](docs/releasing.md)。正式标签自动发布流程已配置，但本机验收记录仍为 pending，当前不能发布正式版本。桌面会话目前已确认锁定，真实交互验收等待解锁。
+菜单已按「窗口模式 / 外观 / 位置与行为」分组，设置分为「外观 / 窗口 / 通用」三页。实际运行截图和验证范围见 [菜单与设置改版](docs/menu-redesign.md)。
+
+完整开发检查和 EXE 打包入口见 [releasing.md](docs/releasing.md)。正式标签自动发布流程已配置，但本机验收记录仍为 pending，当前不能发布正式版本。桌面已经解锁，真实交互验收继续进行。
 
 架构与来源见 [architecture.md](docs/architecture.md)；许可见 [LICENSE](LICENSE) 和 [第三方声明](THIRD_PARTY_NOTICES.md)。

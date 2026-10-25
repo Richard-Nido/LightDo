@@ -3,6 +3,8 @@ pub mod app;
 pub mod geometry;
 #[cfg(windows)]
 pub mod material;
+#[cfg(windows)]
+pub mod menu_ui;
 pub mod model;
 #[cfg(windows)]
 pub mod platform;

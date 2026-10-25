@@ -57,11 +57,13 @@ struct Event {
 thread_local! {
     static EVENTS:RefCell<VecDeque<Event>>=const{RefCell::new(VecDeque::new())};
     static MAIN:Cell<HWND>=const{Cell::new(HWND(std::ptr::null_mut()))};
+    static PANEL:Cell<HWND>=const{Cell::new(HWND(std::ptr::null_mut()))};
     static SCALE:Cell<f32>=const{Cell::new(1.0)};
     static LOCKED:Cell<bool>=const{Cell::new(false)};
     static TITLE_VISIBLE:Cell<bool>=const{Cell::new(true)};
     static PAINT_DARK:Cell<bool>=const{Cell::new(false)};
     static COMPOSING:Cell<bool>=const{Cell::new(false)};
+    static LAST_FOCUS:Cell<HWND>=const{Cell::new(HWND(std::ptr::null_mut()))};
     static IME_ENDED:Cell<Option<Instant>>=const{Cell::new(None)};
     static EDIT_BUFFERS:RefCell<std::collections::HashMap<usize,String>>=RefCell::new(std::collections::HashMap::new());
 }
@@ -78,10 +80,43 @@ fn queue(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) {
     EVENTS.with(|e| e.borrow_mut().push_back(Event { hwnd, msg, w, l }));
 }
 unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LRESULT {
+    if let Some(result) = crate::menu_ui::handle(msg, l) {
+        return result;
+    }
+    if crate::menu_ui::is_open() && matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
+        return unsafe { DefWindowProcW(hwnd, msg, w, l) };
+    }
     match msg {
+        WM_SYSKEYDOWN if w.0 == VK_F10.0 as usize => {
+            queue(hwnd, WM_KEYDOWN, w, l);
+            LRESULT(0)
+        }
+        WM_SYSCOMMAND if w.0 & 0xfff0 == SC_KEYMENU as usize && l.0 == 0 => {
+            queue(hwnd, WM_KEYDOWN, WPARAM(VK_F10.0 as usize), l);
+            LRESULT(0)
+        }
         WM_ACTIVATE => {
             queue(hwnd, msg, w, l);
-            unsafe { DefWindowProcW(hwnd, msg, w, l) }
+            unsafe {
+                if hwnd == PANEL.with(Cell::get) && w.0 & 0xffff == WA_INACTIVE as usize {
+                    let focus = GetFocus();
+                    if IsChild(hwnd, focus).as_bool() {
+                        LAST_FOCUS.with(|f| f.set(focus));
+                    }
+                }
+                let result = DefWindowProcW(hwnd, msg, w, l);
+                if hwnd == PANEL.with(Cell::get)
+                    && w.0 & 0xffff != WA_INACTIVE as usize
+                    && !crate::menu_ui::is_open()
+                    && !settings_ui::is_open()
+                {
+                    let focus = LAST_FOCUS.with(Cell::get);
+                    if IsWindow(Some(focus)).as_bool() && IsChild(hwnd, focus).as_bool() {
+                        let _ = SetFocus(Some(focus));
+                    }
+                }
+                result
+            }
         }
         WM_NCHITTEST => {
             // Dragging is handled in the regular message loop, so background
@@ -463,7 +498,8 @@ impl App {
                 "Direct3D 硬件渲染"
             }
         );
-        if let Err(e) = settings_ui::open(self.controller, &self.model.settings, &diagnostic) {
+        self.show(false);
+        if let Err(e) = settings_ui::open(self.hwnd, &self.model.settings, &diagnostic) {
             self.error = Some(e.to_string());
         }
     }
@@ -998,7 +1034,15 @@ impl App {
             Theme::Dark => true,
             Theme::Light => false,
         };
-        PAINT_DARK.with(|d| d.set(dark));
+        let theme_changed = PAINT_DARK.with(|d| d.replace(dark) != dark);
+        if theme_changed {
+            unsafe {
+                let _ = InvalidateRect(Some(self.input), None, true);
+                if !self.inline.is_invalid() {
+                    let _ = InvalidateRect(Some(self.inline), None, true);
+                }
+            }
+        }
         let ink = gfx::color(if dark { 0xf4f4f5 } else { 0x202630 }, 1.0);
         let muted = gfx::color(if dark { 0xaeb7c2 } else { 0x596474 }, 1.0);
         let accent = gfx::color(0x378cf5, 1.0);
@@ -1285,75 +1329,18 @@ impl App {
     }
     fn menu(&mut self) {
         self.in_menu = true;
-        unsafe {
-            let menu = CreatePopupMenu().unwrap();
-            for (id, label) in [
-                (201, "边缘面板"),
-                (202, "独立悬浮窗"),
-                (203, "桌面组件"),
-                (204, "停靠左侧"),
-                (205, "停靠右侧"),
-                (206, "固定展开"),
-                (207, "始终置顶"),
-                (208, "锁定位置"),
-                (209, "浅色玻璃"),
-                (210, "深色玻璃"),
-                (211, "跟随系统"),
-                (212, "材质更透明"),
-                (213, "材质更浓"),
-                (214, "设置与诊断"),
-                (215, "返回主显示器"),
-                (216, "开机启动"),
-                (217, "导入 QuietDo"),
-                (219, "显示 / 隐藏轻待"),
-                (220, "显示标题栏"),
-                (221, "自动隐藏边缘面板"),
-                (218, "退出轻待"),
-            ] {
-                let cfg = &self.model.settings;
-                let checked = match id {
-                    201 => cfg.mode == Mode::Edge,
-                    202 => cfg.mode == Mode::Floating,
-                    203 => cfg.mode == Mode::Desktop,
-                    204 => cfg.side == Side::Left,
-                    205 => cfg.side == Side::Right,
-                    206 => cfg.pinned,
-                    207 => cfg.topmost,
-                    208 => cfg.locked,
-                    209 => cfg.theme == Theme::Light,
-                    210 => cfg.theme == Theme::Dark,
-                    211 => cfg.theme == Theme::System,
-                    216 => cfg.autostart,
-                    220 => cfg.titlebar,
-                    221 => cfg.auto_hide,
-                    _ => false,
-                };
-                let disabled = (id == 206 && cfg.mode != Mode::Edge)
-                    || (id == 207 && cfg.mode != Mode::Floating);
-                let flags = MF_STRING
-                    | if checked { MF_CHECKED } else { MF_UNCHECKED }
-                    | if disabled {
-                        MF_GRAYED
-                    } else {
-                        MENU_ITEM_FLAGS(0)
-                    };
-                let _ = AppendMenuW(menu, flags, id, &HSTRING::from(label));
-            }
-            let mut p = POINT::default();
-            let _ = GetCursorPos(&mut p);
-            let _ = SetForegroundWindow(self.controller);
-            let id = TrackPopupMenu(
-                menu,
-                TPM_RETURNCMD | TPM_RIGHTBUTTON,
-                p.x,
-                p.y,
-                Some(0),
-                self.controller,
-                None,
-            )
-            .0 as usize;
-            let _ = DestroyMenu(menu);
-            self.in_menu = false;
+        let id = crate::menu_ui::show(
+            if self.visible {
+                self.hwnd
+            } else {
+                self.controller
+            },
+            &self.model.settings,
+            self.visible,
+            self.scale,
+        );
+        self.in_menu = false;
+        if id != 0 {
             self.command(id);
         }
     }
@@ -1362,14 +1349,14 @@ impl App {
             201 => self.mode(Mode::Edge),
             202 => self.mode(Mode::Floating),
             203 => self.mode(Mode::Desktop),
-            204 | 205 => {
+            204 | 205 if self.model.settings.mode == Mode::Edge => {
                 self.model.settings.side = if id == 204 { Side::Left } else { Side::Right };
                 self.reposition();
             }
             206 if self.model.settings.mode == Mode::Edge => {
                 self.model.settings.pinned = !self.model.settings.pinned
             }
-            207 => {
+            207 if self.model.settings.mode == Mode::Floating => {
                 self.model.settings.topmost = !self.model.settings.topmost;
                 unsafe {
                     let _ = SetWindowPos(
@@ -1470,7 +1457,9 @@ impl App {
                 self.model.settings.titlebar = !self.model.settings.titlebar;
                 self.layout_editors();
             }
-            221 => self.model.settings.auto_hide = !self.model.settings.auto_hide,
+            221 if self.model.settings.mode == Mode::Edge => {
+                self.model.settings.auto_hide = !self.model.settings.auto_hide
+            }
             _ => {}
         }
         self.save();
@@ -1780,7 +1769,7 @@ pub fn run() -> std::result::Result<(), String> {
 }
 unsafe fn make_panel() -> Result<HWND> {
     unsafe {
-        CreateWindowExW(
+        let hwnd = CreateWindowExW(
             WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
             w!("LightDo.Panel"),
             w!("轻待 LightDo"),
@@ -1793,7 +1782,10 @@ unsafe fn make_panel() -> Result<HWND> {
             None,
             Some(GetModuleHandleW(None)?.into()),
             None,
-        )
+        )?;
+        PANEL.with(|p| p.set(hwnd));
+        LAST_FOCUS.with(|f| f.set(HWND::default()));
+        Ok(hwnd)
     }
 }
 unsafe fn run_inner() -> Result<()> {
