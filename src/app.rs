@@ -327,7 +327,12 @@ impl App {
             52.0
         } else {
             26.0
-        } && x < width - 152.0
+        } && x < width
+            - if self.model.settings.mode == Mode::Edge {
+                152.0
+            } else {
+                111.0
+            }
         {
             geometry::Gesture::Move
         } else {
@@ -543,6 +548,26 @@ impl App {
         self.model.settings = next;
         LOCKED.with(|l| l.set(self.model.settings.locked));
         self.mode(requested);
+        if requested == Mode::Floating
+            && old.mode == requested
+            && old.topmost != self.model.settings.topmost
+        {
+            unsafe {
+                let _ = SetWindowPos(
+                    self.hwnd,
+                    Some(if self.model.settings.topmost {
+                        HWND_TOPMOST
+                    } else {
+                        HWND_NOTOPMOST
+                    }),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+        }
         self.reposition();
         self.save();
     }
@@ -1133,8 +1158,9 @@ impl App {
                         28.0,
                         muted,
                     )?;
-                    for (label, x) in [
-                        ("⋯", w - 128.0),
+                    let edge = self.model.settings.mode == Mode::Edge;
+                    for (label, x, shown) in [
+                        ("⋯", w - if edge { 128.0 } else { 87.0 }, true),
                         (
                             if self.model.settings.pinned {
                                 "◆"
@@ -1142,9 +1168,13 @@ impl App {
                                 "◇"
                             },
                             w - 87.0,
+                            edge,
                         ),
-                        ("×", w - 46.0),
+                        ("×", w - 46.0, true),
                     ] {
+                        if !shown {
+                            continue;
+                        }
                         gfx::text(dc, &self.gfx.layout(label, 20.0, 30.0)?, x, 20.0, muted)?;
                     }
                 }
@@ -1681,10 +1711,14 @@ impl App {
                 if self.model.settings.titlebar && y < 60.0 {
                     if x > w - 55.0 {
                         self.hide_tray()
-                    } else if x > w - 98.0 {
+                    } else if x > w - 98.0 && self.model.settings.mode == Mode::Edge {
                         self.model.settings.pinned = !self.model.settings.pinned;
                         self.save();
-                    } else if x > w - 145.0 {
+                    } else if x > w - if self.model.settings.mode == Mode::Edge {
+                        145.0
+                    } else {
+                        104.0
+                    } {
                         self.menu()
                     }
                 } else if (72.0 + shift..122.0 + shift).contains(&y) && x > w - 66.0 {

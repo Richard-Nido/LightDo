@@ -222,8 +222,8 @@ unsafe fn read(ui: &Ui) -> std::result::Result<Settings, String> {
         c.titlebar = checked(ui.hwnd, TITLE);
         c.fullscreen_pause = checked(ui.hwnd, FULL);
         c.autostart = checked(ui.hwnd, START);
-        c.pinned = c.pinned && c.mode == Mode::Edge;
-        c.topmost = c.topmost && c.mode == Mode::Floating;
+        // Disabled controls retain their mode-specific preference. The window
+        // layer applies it only in the corresponding mode.
         let key = send(ui.hwnd, KEY, HKM_GETHOTKEY, 0, 0).0 as u32;
         c.hotkey_vk = key & 255;
         let flags = key >> 8;
