@@ -55,11 +55,11 @@ const INPUT_HEIGHT: f32 = 40.0;
 fn edit_key(dark: bool) -> COLORREF {
     COLORREF(if dark { 0x030201 } else { 0xfcfdfe })
 }
-fn font_line_height(font: HFONT, scale: f32) -> i32 {
+fn font_metrics(font: HFONT, scale: f32) -> (i32, i32) {
     unsafe {
         let dc = CreateCompatibleDC(None);
         if dc.is_invalid() {
-            return (18.0 * scale).ceil() as i32;
+            return ((18.0 * scale).ceil() as i32, (15.0 * scale).round() as i32);
         }
         let old = SelectObject(dc, font.into());
         let mut metrics = TEXTMETRICW::default();
@@ -67,9 +67,9 @@ fn font_line_height(font: HFONT, scale: f32) -> i32 {
         SelectObject(dc, old);
         let _ = DeleteDC(dc);
         if ok {
-            metrics.tmHeight.max(1)
+            (metrics.tmHeight.max(1), metrics.tmAscent)
         } else {
-            (18.0 * scale).ceil() as i32
+            ((18.0 * scale).ceil() as i32, (15.0 * scale).round() as i32)
         }
     }
 }
@@ -353,6 +353,17 @@ struct Row {
     id: String,
     top: f32,
     height: f32,
+    layout: IDWriteTextLayout,
+    text_height: f32,
+    baseline: f32,
+}
+impl Row {
+    fn center(&self) -> f32 {
+        self.top + (self.height - 4.0) / 2.0
+    }
+    fn text_top(&self, scale: f32) -> f32 {
+        ((self.center() - self.text_height / 2.0) * scale).round() / scale
+    }
 }
 #[derive(Clone, Copy)]
 struct Drag {
@@ -396,6 +407,7 @@ struct App {
     quit: bool,
     font: HFONT,
     font_line_px: i32,
+    font_ascent_px: i32,
     taskbar_created: u32,
     icon: HICON,
     graphic_retry: Option<Instant>,
@@ -726,7 +738,7 @@ impl App {
                     }
                 }
                 let old = std::mem::replace(&mut self.font, font);
-                self.font_line_px = font_line_height(font, self.scale);
+                (self.font_line_px, self.font_ascent_px) = font_metrics(font, self.scale);
                 let _ = DeleteObject(old.into());
             }
         }
@@ -815,44 +827,86 @@ impl App {
                 Some(LPARAM(1)),
             );
             SendMessageW(h, EM_SETLIMITTEXT, Some(WPARAM(32767)), Some(LPARAM(0)));
+            SendMessageW(
+                h,
+                EM_SETMARGINS,
+                Some(WPARAM((EC_LEFTMARGIN | EC_RIGHTMARGIN) as usize)),
+                Some(LPARAM(0)),
+            );
             let _ = SetWindowSubclass(h, Some(edit_proc), 1, id);
             Ok(h)
         }
     }
     fn layout_editors(&self) {
+        let s = self.scale;
+        let shift = if self.model.settings.titlebar {
+            0.0
+        } else {
+            -44.0
+        };
+        self.place_editor(
+            self.input,
+            (32.0 * s) as i32,
+            (((INPUT_TOP + shift) * s + (INPUT_HEIGHT * s - self.font_line_px as f32) / 2.0)
+                .round()) as i32,
+            (self.size.0 as f32 - 98.0 * s).max(40.0) as i32,
+            self.font_line_px,
+        );
+        if self.editing.is_some() {
+            if let Some(row) = self
+                .rows
+                .iter()
+                .find(|r| Some(&r.id) == self.editing.as_ref())
+            {
+                self.place_editor(
+                    self.inline,
+                    (58.0 * s) as i32,
+                    ((row.text_top(s) + row.baseline) * s).round() as i32 - self.font_ascent_px,
+                    (self.size.0 as f32 - 124.0 * s) as i32,
+                    ((row.text_height * s).ceil() as i32).max(self.font_line_px),
+                );
+            }
+        }
+    }
+    fn place_editor(&self, edit: HWND, x: i32, y: i32, width: i32, height: i32) {
         unsafe {
-            let s = self.scale;
-            let shift = if self.model.settings.titlebar {
-                0.0
-            } else {
-                -44.0
-            };
+            let mut current = RECT::default();
+            let mut at = POINT::default();
+            if GetWindowRect(edit, &mut current).is_ok() {
+                at.x = current.left;
+                at.y = current.top;
+                if ScreenToClient(self.hwnd, &mut at).as_bool()
+                    && at.x == x
+                    && at.y == y
+                    && current.right - current.left == width
+                    && current.bottom - current.top == height
+                {
+                    return;
+                }
+            }
+            // Do not reset native EDIT layout/caret on every captured frame.
             let _ = SetWindowPos(
-                self.input,
+                edit,
                 None,
-                (32.0 * s) as i32,
-                (((INPUT_TOP + shift) * s + (INPUT_HEIGHT * s - self.font_line_px as f32) / 2.0)
-                    .round()) as i32,
-                (self.size.0 as f32 - 98.0 * s).max(40.0) as i32,
-                self.font_line_px,
+                x,
+                y,
+                width,
+                height,
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
-            if self.editing.is_some() {
-                if let Some(row) = self
-                    .rows
-                    .iter()
-                    .find(|r| Some(&r.id) == self.editing.as_ref())
-                {
-                    let _ = SetWindowPos(
-                        self.inline,
-                        None,
-                        (60.0 * s) as i32,
-                        ((row.top + 8.0) * s) as i32,
-                        (self.size.0 as f32 - 116.0 * s) as i32,
-                        (row.height * s).max(28.0 * s) as i32,
-                        SWP_NOACTIVATE | SWP_NOZORDER,
-                    );
-                }
+            if edit == self.inline {
+                let format = RECT {
+                    left: 0,
+                    top: 0,
+                    right: width,
+                    bottom: height,
+                };
+                SendMessageW(
+                    edit,
+                    EM_SETRECTNP,
+                    None,
+                    Some(LPARAM(&format as *const RECT as isize)),
+                );
             }
         }
     }
@@ -900,7 +954,10 @@ impl App {
     }
     fn start_edit(&mut self, id: String) {
         if self.editing.is_some() {
-            self.commit(self.inline, false)
+            self.commit(self.inline, false);
+            if self.editing.is_some() {
+                return;
+            }
         }
         if let Some(todo) = self.model.todos.iter().find(|t| t.id == id) {
             let value = todo.text.clone();
@@ -910,6 +967,7 @@ impl App {
                     self.editing = Some(id);
                     set_text(hwnd, &value);
                     self.layout_editors();
+                    self.dirty = true;
                     unsafe {
                         let _ = SetFocus(Some(hwnd));
                         SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
@@ -1239,14 +1297,28 @@ impl App {
         for todo in &self.model.todos {
             let layout = self.gfx.layout(&todo.text, 15.0, w - 124.0)?;
             let mut metrics = DWRITE_TEXT_METRICS::default();
+            let mut line_count = 0;
+            let mut lines;
             unsafe {
                 layout.GetMetrics(&mut metrics)?;
+                lines = vec![DWRITE_LINE_METRICS::default(); metrics.lineCount.max(1) as usize];
+                layout.GetLineMetrics(Some(&mut lines), &mut line_count)?;
+                layout.SetStrikethrough(
+                    todo.done,
+                    DWRITE_TEXT_RANGE {
+                        startPosition: 0,
+                        length: todo.text.encode_utf16().count() as u32,
+                    },
+                )?;
             }
             let height = (metrics.height + 24.0).max(50.0);
             rows.push(Row {
                 id: todo.id.clone(),
                 top: y,
                 height,
+                layout,
+                text_height: metrics.height,
+                baseline: lines[0].baseline,
             });
             y += height;
         }
@@ -1421,7 +1493,7 @@ impl App {
                     let check = D2D1_ELLIPSE {
                         point: Vector2 {
                             X: 35.0,
-                            Y: row.top + 21.0,
+                            Y: row.center(),
                         },
                         radiusX: 8.0,
                         radiusY: 8.0,
@@ -1430,41 +1502,33 @@ impl App {
                         dc.CreateSolidColorBrush(&if todo.done { accent } else { muted }, None)?;
                     if todo.done {
                         dc.FillEllipse(&check, &brush);
-                        gfx::text(
+                        gfx::centered_text(
                             dc,
-                            &self.gfx.layout("✓", 12.0, 20.0)?,
-                            28.5,
-                            row.top + 12.5,
+                            &self.gfx,
+                            "✓",
+                            12.0,
+                            gfx::rect(25.0, row.center() - 10.0, 20.0, 20.0),
                             gfx::color(0xffffff, 1.0),
                         )?;
                     } else {
                         dc.DrawEllipse(&check, &brush, 1.2, None)
                     }
                     if self.editing.as_ref() != Some(&todo.id) {
-                        let layout = self.gfx.layout(&todo.text, 15.0, w - 124.0)?;
-                        if todo.done {
-                            layout.SetStrikethrough(
-                                true,
-                                DWRITE_TEXT_RANGE {
-                                    startPosition: 0,
-                                    length: todo.text.encode_utf16().count() as u32,
-                                },
-                            )?;
-                        }
                         gfx::text(
                             dc,
-                            &layout,
+                            &row.layout,
                             58.0,
-                            row.top + 9.0,
+                            row.text_top(s),
                             if todo.done { muted } else { ink },
                         )?;
                     }
                     if self.hover.as_ref() == Some(&todo.id) {
-                        gfx::text(
+                        gfx::centered_text(
                             dc,
-                            &self.gfx.layout("×", 18.0, 22.0)?,
-                            w - 49.0,
-                            row.top + 10.0,
+                            &self.gfx,
+                            "×",
+                            18.0,
+                            gfx::rect(w - 59.0, row.center() - 16.0, 32.0, 32.0),
                             muted,
                         )?;
                     }
@@ -2164,6 +2228,7 @@ unsafe fn run_inner() -> Result<()> {
             w!("Microsoft YaHei UI"),
         );
         let gfx = Rc::new(Gfx::new()?);
+        let (font_line_px, font_ascent_px) = font_metrics(font, scale);
         let surface = Surface::new(&gfx, hwnd)?;
         let material = Material::detect(gfx.software);
         let mut state = WindowState::default();
@@ -2204,7 +2269,8 @@ unsafe fn run_inner() -> Result<()> {
             error,
             quit: false,
             font,
-            font_line_px: font_line_height(font, scale),
+            font_line_px,
+            font_ascent_px,
             taskbar_created: RegisterWindowMessageW(w!("TaskbarCreated")),
             icon,
             graphic_retry: None,
@@ -2275,7 +2341,7 @@ unsafe fn run_inner() -> Result<()> {
         app.release_surface();
         let _ = DestroyWindow(app.hwnd);
         let _ = DestroyWindow(controller);
-        let _ = DeleteObject(font.into());
+        let _ = DeleteObject(app.font.into());
         let _ = CloseHandle(mutex);
         Ok(())
     }

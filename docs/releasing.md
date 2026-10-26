@@ -37,3 +37,14 @@
 5. 下载 Release EXE 对照 SHA-256 并复核安装运行。当前尚未走到正式发布这一步。
 
 已经公开的版本不改写标签；修复源码后提高补丁版本再发布。发布前未通过的构建可直接修复主分支，不能伪造已通过状态。未签名状态需在每次 Release 说明中保留。
+
+构建和打包均遵守 CARGO_TARGET_DIR；调试运行的 EXE 被占用时，可在独立构建目录准备候选，不替换正在运行的程序。打包会核对 EXE 资源版本与源码版本，防止误用旧二进制。
+
+完成正式 Release 下载、校验和安装复核后，执行工作目录清理：
+
+```powershell
+.\scripts\clean-delivery.ps1
+.\scripts\clean-delivery.ps1 -Execute -IncludeTestData
+```
+
+第一条只列出计划，不删除文件。第二条用于本项目已确认仅含合成任务的隔离验收数据；如果其中有实际需要的任务，先保留到本应用正常数据目录，不能把实际任务当中间文件删除。脚本会先检查 Git 根目录、已跟踪文件、目录链接、未提交修改和正在运行的工作区 EXE，全部满足后才删除 target、.tools、.reference、local-evidence 和 dist/stage。Git 历史、源码、文档、许可、dist 安装包及校验文件保留，项目外目录不在清理范围。

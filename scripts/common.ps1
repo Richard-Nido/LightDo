@@ -8,6 +8,14 @@ function Find-Cargo {
     if (Test-Path -LiteralPath $candidate) { return $candidate }
     throw '缺少 Rust MSVC 工具链。请安装 rustup，然后重新运行。'
 }
+function Get-ReleaseBinary {
+    $buildRoot = if ($env:CARGO_TARGET_DIR) {
+        [IO.Path]::GetFullPath($env:CARGO_TARGET_DIR, $script:ProjectRoot)
+    } else {
+        Join-Path $script:ProjectRoot 'target'
+    }
+    Join-Path $buildRoot 'x86_64-pc-windows-msvc/release/lightdo.exe'
+}
 function Invoke-Checked {
     param([Parameter(Mandatory)][string]$Executable, [Parameter(ValueFromRemainingArguments)][string[]]$Arguments)
     & $Executable @Arguments

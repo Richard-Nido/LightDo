@@ -1255,6 +1255,15 @@ fn cloaked(window: HWND) -> bool {
         && cloaked != 0
 }
 
+fn capture_excluded(window: HWND) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE,
+    };
+    let mut affinity = 0;
+    unsafe { GetWindowDisplayAffinity(window, &mut affinity) }.is_ok()
+        && affinity == WDA_EXCLUDEFROMCAPTURE.0
+}
+
 /// Whether the system can capture a window (Windows.Graphics.Capture's capture of a window by its handle: Windows 10
 /// 1903 and later, the Universal API contract 8). (Its capture alone came in 1803: there, asked whether it captures,
 /// 1809 says it does, and a scene could not be made, again and again, with no other way to what is behind.)
@@ -1430,6 +1439,9 @@ impl Scene {
             .skip_while(|window| *window != over)
             .skip(1)
             .filter(|window| !left_out.contains(&(window.0 as isize)))
+            // Honor capture-excluded recording controls/overlays before DWM
+            // turns their thumbnails into opaque black rectangles.
+            .filter(|window| !capture_excluded(*window))
             .filter(|window| unsafe { IsWindowVisible(*window).as_bool() && !IsIconic(*window).as_bool() } && !cloaked(*window) && opacity_of(*window) > 0)
             .filter_map(|window| {
                 let mut rect = RECT::default();
@@ -1966,6 +1978,36 @@ mod tests {
             reds.push((mean * 100.0).round() as i32);
         }
         unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                LWA_ALPHA, SetLayeredWindowAttributes, SetWindowDisplayAffinity,
+                WDA_EXCLUDEFROMCAPTURE, WDA_MONITOR, WDA_NONE, WS_EX_LAYERED,
+            };
+            SetWindowLongPtrW(
+                red,
+                GWL_EXSTYLE,
+                GetWindowLongPtrW(red, GWL_EXSTYLE) | WS_EX_LAYERED.0 as isize,
+            );
+            SetLayeredWindowAttributes(
+                red,
+                windows::Win32::Foundation::COLORREF(0),
+                255,
+                LWA_ALPHA,
+            )
+            .unwrap();
+            SetWindowDisplayAffinity(red, WDA_EXCLUDEFROMCAPTURE).unwrap();
+            assert!(capture_excluded(red));
+            scene.arrange(scene.area, over);
+            assert!(
+                !scene.shown.iter().any(|(window, ..)| *window == red),
+                "capture-excluded source remained in scene"
+            );
+            // WDA_MONITOR deliberately renders a blank protected surface;
+            // it must not be treated as the explicit exclusion value.
+            SetWindowDisplayAffinity(red, WDA_MONITOR).unwrap();
+            assert!(!capture_excluded(red));
+            scene.arrange(scene.area, over);
+            assert!(scene.shown.iter().any(|(window, ..)| *window == red));
+            SetWindowDisplayAffinity(red, WDA_NONE).unwrap();
             let _ = DestroyWindow(red);
             let _ = DestroyWindow(over);
         }
@@ -2392,22 +2434,6 @@ mod tests {
                 scene.size.Width,
                 scene.size.Height
             );
-            for (window, _, rect, _) in &scene.shown {
-                let mut title = [0u16; 80];
-                let n = unsafe {
-                    windows::Win32::UI::WindowsAndMessaging::GetWindowTextW(*window, &mut title)
-                };
-                let mut class = [0u16; 80];
-                let c = unsafe {
-                    windows::Win32::UI::WindowsAndMessaging::GetClassNameW(*window, &mut class)
-                };
-                println!(
-                    "   behind: {:?} [{}] {:?}",
-                    String::from_utf16_lossy(&title[..n as usize]),
-                    String::from_utf16_lossy(&class[..c as usize]),
-                    rect
-                );
-            }
             let arranged = std::time::Instant::now();
             for taken in 0..3 {
                 let began = std::time::Instant::now();

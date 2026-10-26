@@ -16,6 +16,8 @@ Glance 的 glass.rs 是系统 HostBackdrop 毛玻璃；skins.rs 的 Glass 才使
 2. 单一待办 HWND，原生编辑子控件；边缘无激活 ShowWindow，点击输入再激活。模式转换保留编辑缓冲，几何坐标为物理像素，布局使用 DIP。移动/缩放使用普通消息循环中的捕获手势，避免系统模态移动循环暂停背景刷新。
 3. 使用系统编辑控件保留输入法、选区、粘贴和无障碍支持；组合期间禁止 Enter 提交，处理 IME 结束后的同一次按键与失焦顺序。实际候选窗测试是独立验收门槛。
 
+场景排列遵守窗口的捕获排除标志：查询到 WDA_EXCLUDEFROMCAPTURE 时不注册其缩略图，避免录屏控制等覆盖层成为黑色遮挡；WDA_MONITOR 保留其空内容保护语义，不尝试读取被保护的像素。语义依据 [Microsoft 的 SetWindowDisplayAffinity 文档](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity)。原生受控窗口已验证两种标志的区别，尚未将这项局部测试扩大为所有偶发黑帧均已解决。
+
 受控首帧测试会先等待测试窗口真正脱离 DWM 初始 cloak，再完成 DWM 缩略图和桌面层级排列；这样测试结果不会把测试夹具的初始空帧误报成产品采样失败。受控红窗测试在同一构建连续 3 轮、每轮 12/12 首帧亮度均为 21（纯红亮度基准）。正式运行仍对捕获失败保留降级路径，不把测试夹具结果扩大为所有桌面场景保证。
 
 ## 数据与发布边界

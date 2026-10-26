@@ -12,7 +12,12 @@ $stage = Join-Path $script:ProjectRoot 'dist/stage'
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 $licenseDir=Join-Path $stage 'licenses'
 New-Item -ItemType Directory -Force -Path $licenseDir | Out-Null
-Copy-Item 'target/x86_64-pc-windows-msvc/release/lightdo.exe' $stage
+$binary = Get-ReleaseBinary
+if (!(Test-Path -LiteralPath $binary)) { throw '找不到当前构建目录的 lightdo.exe。' }
+if ((Get-Item -LiteralPath $binary).VersionInfo.ProductVersion -ne $version) {
+    throw '待打包 EXE 的资源版本与源码版本不一致，禁止打包旧二进制。'
+}
+Copy-Item -LiteralPath $binary -Destination $stage
 Copy-Item 'LICENSE','THIRD_PARTY_NOTICES.md','docs/LICENSE-Glance','docs/LICENSE-QuietDo' $stage
 $licenses = @('LightDo locked dependency license inventory','')
 foreach ($dependency in $metadata.packages | Sort-Object name,version) {
