@@ -23,7 +23,7 @@ $targets = @('target', '.tools', '.reference', 'local-evidence', 'dist/stage') |
     if (Test-Path -LiteralPath $resolved) { $resolved }
 }
 # Do every guard before removing anything. Never follow directory junctions.
-foreach ($target in @($targets) + @($obsoleteAssets.FullName)) {
+foreach ($target in @($targets) + @($obsoleteAssets | ForEach-Object { $_.FullName })) {
     $absolute = [IO.Path]::GetFullPath($target)
     if (!$absolute.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw '清理目标越过工作目录。' }
     $parent = Split-Path -Parent $absolute
@@ -53,7 +53,7 @@ $testStates = @(Get-ChildItem -LiteralPath (Join-Path $workspace 'local-evidence
 $plan = [ordered]@{
     execute = [bool]$Execute
     relativeTargets = @($targets | ForEach-Object { [IO.Path]::GetRelativePath($workspace, $_) })
-    obsoleteInstallersAndLicenses = @($obsoleteAssets.Name)
+    obsoleteInstallersAndLicenses = @($obsoleteAssets | ForEach-Object { $_.Name })
     retainedVersion = $version
     runningWorkspaceApp = ($running.Count -gt 0)
     isolatedStateFiles = $testStates.Count

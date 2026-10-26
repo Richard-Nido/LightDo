@@ -44,6 +44,9 @@ try {
     $keep = Join-Path $fixture 'dist/LightDo_1.0.0_x64-setup.exe'
     $keepHash = (Get-FileHash -LiteralPath $keep).Hash
     & (Join-Path $fixture 'scripts/clean-delivery.ps1') -Execute -IncludeTestData | Out-Null
+    # No obsolete assets or intermediate directories remain: repeating the
+    # command must be harmless and must not turn an empty member list into null.
+    & (Join-Path $fixture 'scripts/clean-delivery.ps1') -Execute -IncludeTestData | Out-Null
     foreach ($relative in @('target','.tools','.reference','local-evidence','dist/stage','dist/LightDo_0.1.0_x64-setup.exe','dist/LightDo_0.1.0_licenses.zip')) {
         if (Test-Path -LiteralPath (Join-Path $fixture $relative)) { throw '隔离测试中间文件未清理。' }
     }
@@ -52,7 +55,7 @@ try {
         !(Test-Path -LiteralPath (Join-Path $fixture '.git')) -or
         !(Test-Path -LiteralPath (Join-Path $fixture 'dist/LightDo_1.0.0_licenses.zip')) -or
         !(Test-Path -LiteralPath (Join-Path $fixture 'dist/SHA256SUMS.txt'))) { throw '隔离测试误删了应保留内容。' }
-    [ordered]@{dirtyTreeRefused=$true;trackedTargetRefused=$true;currentAssetsRetained=$true;obsoleteAssetsRemoved=$true;sourceAndGitRetained=$true;cleanupScriptSha256=(Get-FileHash -LiteralPath $cleanupSource).Hash.ToLowerInvariant()} |
+    [ordered]@{dirtyTreeRefused=$true;trackedTargetRefused=$true;currentAssetsRetained=$true;obsoleteAssetsRemoved=$true;repeatedCleanupSafe=$true;sourceAndGitRetained=$true;cleanupScriptSha256=(Get-FileHash -LiteralPath $cleanupSource).Hash.ToLowerInvariant()} |
         ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $fixtureParent 'test-clean-delivery.json')
     Write-Output 'Cleanup guards passed in an isolated synthetic repository; actual project was not cleaned.'
 } finally { Set-Location -LiteralPath $originalLocation.Path }
