@@ -2234,7 +2234,7 @@ unsafe fn run_inner() -> Result<()> {
         }
         SetTimer(Some(controller), 1, 80, None);
         let _ = WTSRegisterSessionNotification(controller, NOTIFY_FOR_THIS_SESSION);
-        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        app.show(false);
         if !app.store.writable {
             let _ = EnableWindow(app.input, false);
             app.message("无法读取轻待的数据文件。原文件保持不变，当前已禁止修改和覆盖保存。请检查 %APPDATA%\\LightDo\\state.json 后重启。可以从托盘正常退出。");

@@ -91,7 +91,12 @@ fn main() {
             None,
         )
         .unwrap();
-        SetTimer(Some(hwnd), 1, 33, None);
+        if std::env::args().any(|arg| arg == "--maximized") {
+            let _ = ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+        }
+        if !std::env::args().any(|arg| arg == "--static") {
+            SetTimer(Some(hwnd), 1, 33, None);
+        }
         let mut m = MSG::default();
         while GetMessageW(&mut m, None, 0, 0).0 > 0 {
             let _ = TranslateMessage(&m);

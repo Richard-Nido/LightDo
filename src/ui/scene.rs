@@ -1856,7 +1856,7 @@ mod tests {
             };
             RegisterClassW(&class);
             let window = CreateWindowExW(
-                WINDOW_EX_STYLE(0),
+                windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST,
                 class.lpszClassName,
                 w!(""),
                 WS_POPUP,
@@ -1887,10 +1887,7 @@ mod tests {
             pump();
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let mut all: Vec<HWND> = Vec::new();
-        unsafe {
-            let _ = EnumWindows(Some(each), LPARAM(&mut all as *mut _ as isize));
-        }
+        let over = over_all("LightDoKnownRedOver");
         let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
         let mut scene = Scene::new(
             RECT {
@@ -1914,7 +1911,34 @@ mod tests {
             if step % 4 == 3 {
                 scene.rest();
             }
-            scene.arrange(area, all[0]);
+            unsafe {
+                let flags = SWP_NOSIZE
+                    | windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE
+                    | SWP_NOACTIVATE;
+                let _ = SetWindowPos(
+                    over,
+                    Some(windows::Win32::UI::WindowsAndMessaging::HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    flags,
+                );
+                let _ = SetWindowPos(red, Some(over), 0, 0, 0, 0, flags);
+            }
+            // Windows may show a newly created window while DWM still
+            // cloaks its initial surface. Establish the fixture before testing
+            // the scene; a cloaked window is correctly excluded from it.
+            let visible_since = std::time::Instant::now();
+            while cloaked(red) && visible_since.elapsed() < std::time::Duration::from_secs(2) {
+                pump();
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            assert!(
+                !cloaked(red),
+                "red fixture never became a visible DWM source"
+            );
+            scene.arrange(area, over);
             let began = std::time::Instant::now();
             scene.want();
             let mut capture = None;
@@ -1943,6 +1967,7 @@ mod tests {
         }
         unsafe {
             let _ = DestroyWindow(red);
+            let _ = DestroyWindow(over);
         }
         // (Pure red is 21 light.)
         println!("the red window's light in each first frame: {reds:?}");

@@ -2,13 +2,17 @@
 
 状态：开发中，尚未达到正式发布门槛。
 
-用户要求进一步确认并尽量降低后台占用。优化前后实际数据见 [performance.md](performance.md)。优化后隐藏样本 64.93 秒，CPU 0.0012%、GPU 0%、平均工作集 95.26 MiB，前后均隐藏且无阻塞弹窗；可见场景和切换泄漏仍待复测。新版首帧捕获集成复测在全屏置顶测试背景环境下出现 FAIL，恢复原采样密度也失败，原因尚未定位；没有扩大历史通过结果。
+用户要求进一步确认并尽量降低后台占用。优化前后实际数据见 [performance.md](performance.md)。优化后隐藏样本 64.93 秒，CPU 0.0012%、GPU 0%、平均工作集 95.26 MiB，前后均隐藏且无阻塞弹窗；可见场景和切换泄漏仍待复测。首帧捕获测试曾在全屏置顶背景环境下 FAIL；已定位测试红窗仍处于 DWM 初始 cloak，先等待其可见后，原捕获实现连续 3 轮均为 12/12 正确。未采用额外丢帧、DwmFlush 或重建捕获会话的实验方案。
 
 此前锁屏阻塞已解除：用户回复桌面已解锁，WTS 复核 `lockFlag=1, locked=false`。当前 GetDpiForWindow=144（150%）。2026-10-26 用户针对 71b5f56 新版桌面模式的 Win+D 往返、添加/编辑与普通应用层级反馈「一切正常！」，该项目记为用户手测 PASS；更早旧子窗口方案的反馈仍仅作历史记录。
 
 本轮菜单/设置归并和实际画面见 [menu-redesign.md](menu-redesign.md)。新增中文与 Emoji 任务、首尾空白清理、输入清空且保留焦点、JSON 保存、浅深色菜单和主题切换、子菜单禁用状态、F10 打开与 Esc 关闭已观察。用户手测菜单方向键与设置模式选择反馈「可以实现」，对应项目 PASS。按用户最新要求已完整移除 QuietDo 导入，实际浅深色菜单已检查，原有轻待数据的废弃字段兼容测试通过。
 
 后续界面调整：恢复菱形快捷按钮；输入框收紧并透出真实玻璃；占位文字按原生字体行高居中；空列表只保留 14 DIP 引导。150% 实际窗口已检查三点及菱形在高亮块中的位置，关闭按钮点击后诊断 visible=false、visibleOwnedPopup=false。悬浮菱形实际点击后的 topmost 为 true → false → true。三个标题图标均按可见笔画边界居中，绘制与点击共用矩形。中文/Emoji 新增、鼠标选区和草稿跨模式/拖动保留已观察；新的透明原生编辑表面不沿用旧 IME 专项通过结论。
+
+当前构建补测：150% 实际拼音 n/i 候选窗位置正确，Space 选择“你”，Enter 新增且输入清空并保留焦点；占位字不再叠在组合文字后方。已双击“你”获得行内原生编辑控件与选区。标题拖动后的物理坐标由 [88,120,688,1020] 变为 [283,194,883,1094]，动态网格仍更新，未观察到自身递归。启动时置顶偏好曾未应用，已改用统一 show(false) 路径，重启诊断 topmost=true、foreground=false。尚未扩大为行内提交/取消、所有 DPI 或完整玻璃通过。
+
+![当前开发构建的受控动态网格与深色玻璃](images/lightdo-glass-dark-current.jpg)
 
 | 项目 | 方法/环境 | 当前结果 |
 |---|---|---|
@@ -21,7 +25,7 @@
 | 中文 IME/候选窗 | 实际按 n、i、Return；行内 n、i、Space、Esc；独立原生编辑控件 | PASS 当前缩放：候选窗出现；组合 Enter 未新增任务，第二次 Enter 才新增；Space 选出“你”；Esc 恢复原文。证据 images/p0-ime-inline.jpg |
 | Unicode 待办新增 | 原生输入“中文待办 · LightDo 🙂”，Enter，读取隔离数据 | PASS；首尾空白去除，顶部新增，输入清空且保留焦点 |
 | 自动化测试 | cargo test --locked --lib | 20 PASS，9 个真实桌面测试/实验明确忽略；覆盖模式偏好、反向展开、隐藏/暂停计时器生命周期，没有把忽略项写成通过 |
-| 原生捕获集成测试 | scene_first_frame_holds_the_windows / scene_shows / wanted_once_one_is_taken_another_is_read | 首帧和场景测试 PASS；连续帧测试首次 FAIL、重试 PASS，稳定性仍待排查，不能抹去失败 |
+| 原生捕获集成测试 | scene_first_frame_holds_the_windows / scene_shows / wanted_once_one_is_taken_another_is_read | 受控红窗测试先等待 DWM 脱离初始 cloak；同一构建连续 3 轮均为 12/12 首帧亮度 21。scene_shows 与连续读取各 PASS；这证明捕获链路和测试夹具，不等同于所有桌面视觉场景都已验收 |
 | 连续帧补充复测 | 同一测试独立运行 5 次 | 5/5 PASS；不抹去首次 FAIL，且不等同于全部视觉验收 |
 | 桌面子窗口排除探索 | 白宿主/红子窗，对比设置排除标志前后 | FAIL：两组亮度均 0.21176487，不能排除自身，生产实现未采用该路径 |
 | CI 基线 | GitHub Actions run 40217914615，提交 0b88a36 | PASS：Windows 检查、测试、x64 编译；仅适用于该基线提交，不代表当前新增功能验收 |
@@ -53,4 +57,4 @@
 
 测试硬件：Intel Core i9-13900H、Intel UHD Graphics + RTX 4070 Laptop GPU。最终资源占用尚未测量，不引用上游宣传数字。图片 images/p0-ime-inline.jpg 是早期实际基线运行证据，只能证明当时的 IME 与背景效果，不能作为最新提交的整体验收截图。
 
-当前移除数据导入后的开发安装包为 0.1.0，360180 字节，未签名；SHA-256 为 `5fd32b86a5ad8bcc8cb3b6a13d1e1d5ab274e969dc81a970fd3a04023ac46e21`。程序 PE Machine=0x8664，资源版本 0.1.0，CompanyName=Yuan Haoran (Richard-Nido)。构建保持静态 CRT 与 Windows 系统 DLL 依赖。此开发包尚未完成安装后全交互验收，不能称为正式交付版。历史开发包已被本次构建替代。
+当前包含界面与启动置顶修正的开发安装包为 0.1.0，363341 字节，未签名；SHA-256 为 `6562b4ff22b1780c7ebbad519b65ab6187289a2b288d9509fe8366199fd4f85d`。资源版本 0.1.0，CompanyName=Yuan Haoran (Richard-Nido)。静默安装、payload 哈希、同版本覆盖、默认卸载保留合成标记及快捷方式清理已复测通过；GUI、跨版本升级和主动删除选择仍未测试，不能称为正式交付版。
