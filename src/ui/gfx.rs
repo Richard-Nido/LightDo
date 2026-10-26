@@ -286,6 +286,33 @@ pub fn text(
         Ok(())
     }
 }
+pub fn centered_text(
+    dc: &ID2D1DeviceContext,
+    gfx: &Gfx,
+    label: &str,
+    size: f32,
+    area: D2D_RECT_F,
+    color: D2D1_COLOR_F,
+) -> Result<()> {
+    let width = (area.right - area.left).max(1.0);
+    let height = (area.bottom - area.top).max(1.0);
+    let layout = gfx.layout(label, size, width)?;
+    unsafe {
+        layout.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+        layout.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
+        layout.SetMaxHeight(height)?;
+        // Font advances and line boxes include asymmetric whitespace. After
+        // layout alignment, center the visible ink inside the button as well.
+        let ink = layout.GetOverhangMetrics()?;
+        text(
+            dc,
+            &layout,
+            area.left + (ink.left - ink.right) / 2.0,
+            area.top + (ink.top - ink.bottom) / 2.0,
+            color,
+        )
+    }
+}
 pub fn line(
     dc: &ID2D1DeviceContext,
     a: (f32, f32),

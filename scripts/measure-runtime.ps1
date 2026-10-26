@@ -2,6 +2,7 @@ param(
     [ValidateRange(10,180)][int]$Seconds = 30,
     [ValidatePattern('^[a-z0-9-]{1,64}$')][string]$Name = 'runtime',
     [switch]$IncludeGpu,
+    [ValidateSet('Any','Hidden','Visible')][string]$ExpectedState = 'Any',
     [int]$ProcessId = 0
 )
 . "$PSScriptRoot/common.ps1"
@@ -15,6 +16,13 @@ if ($taskProcess.ProcessName -ne 'lightdo') { throw '只测量轻待进程。' }
 $taskLogical = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
 $taskInitial = & $taskProcess.Path --diagnose | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw '读取本应用诊断失败。' }
+function Test-ExpectedState($diagnostic) {
+    if ($null -eq $diagnostic.panel) { return $false }
+    if ($ExpectedState -eq 'Hidden') { return $diagnostic.panel.visible -eq $false }
+    if ($ExpectedState -eq 'Visible') { return $diagnostic.panel.visible -eq $true }
+    return $true
+}
+if (!(Test-ExpectedState $taskInitial)) { throw "当前窗口状态不符合 $ExpectedState，本轮未开始采样。" }
 $taskCpuStart = $taskProcess.TotalProcessorTime.TotalMilliseconds
 $taskWatch = [Diagnostics.Stopwatch]::StartNew()
 $taskMemory = [Collections.Generic.List[double]]::new()
@@ -63,6 +71,8 @@ $taskFinal = & $taskProcess.Path --diagnose | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw '测量后的本应用诊断失败。' }
 $taskResult = [ordered]@{
     name = $Name
+    expectedState = $ExpectedState
+    expectedStateMatchedAtBothEnds = ((Test-ExpectedState $taskInitial) -and (Test-ExpectedState $taskFinal))
     measuredAt = [DateTimeOffset]::Now.ToString('o')
     seconds = $taskElapsed
     logicalProcessors = $taskLogical

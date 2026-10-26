@@ -22,7 +22,10 @@ use windows::{
     Win32::{
         Foundation::*,
         Graphics::{
-            Direct2D::{Common::D2D1_GRADIENT_STOP, *},
+            Direct2D::{
+                Common::{D2D_RECT_F, D2D1_GRADIENT_STOP},
+                *,
+            },
             DirectWrite::*,
             Gdi::*,
         },
@@ -47,6 +50,29 @@ const KEY_NAV: u32 = WM_APP + 15;
 const SHOW_REQUEST: u32 = WM_APP + 16;
 const INPUT: usize = 101;
 const INLINE: usize = 102;
+const INPUT_TOP: f32 = 72.0;
+const INPUT_HEIGHT: f32 = 40.0;
+fn edit_key(dark: bool) -> COLORREF {
+    COLORREF(if dark { 0x030201 } else { 0xfcfdfe })
+}
+fn font_line_height(font: HFONT, scale: f32) -> i32 {
+    unsafe {
+        let dc = CreateCompatibleDC(None);
+        if dc.is_invalid() {
+            return (18.0 * scale).ceil() as i32;
+        }
+        let old = SelectObject(dc, font.into());
+        let mut metrics = TEXTMETRICW::default();
+        let ok = GetTextMetricsW(dc, &mut metrics).as_bool();
+        SelectObject(dc, old);
+        let _ = DeleteDC(dc);
+        if ok {
+            metrics.tmHeight.max(1)
+        } else {
+            (18.0 * scale).ceil() as i32
+        }
+    }
+}
 #[derive(Clone, Copy)]
 struct Event {
     hwnd: HWND,
@@ -164,6 +190,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
         | WM_CAPTURECHANGED
         | WM_LBUTTONDBLCLK
         | WM_MOUSEMOVE
+        | WM_MOUSELEAVE
         | WM_MOUSEWHEEL
         | WM_RBUTTONUP
         | WM_COMMAND
@@ -185,7 +212,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
                 let dc = HDC(w.0 as *mut _);
                 let dark = PAINT_DARK.with(Cell::get);
                 SetTextColor(dc, COLORREF(if dark { 0xf5f5f5 } else { 0x302420 }));
-                let background = COLORREF(if dark { 0x3b342f } else { 0xf7f5f1 });
+                let background = edit_key(dark);
                 SetBkColor(dc, background);
                 SetDCBrushColor(dc, background);
             }
@@ -204,19 +231,80 @@ unsafe extern "system" fn edit_proc(
     w: WPARAM,
     l: LPARAM,
     _: usize,
-    _: usize,
+    control_id: usize,
 ) -> LRESULT {
     match msg {
+        WM_PAINT
+            if control_id == INPUT
+                && unsafe { GetWindowTextLengthW(hwnd) } == 0
+                && !COMPOSING.with(Cell::get) =>
+        {
+            // Let EDIT update its internal paint/cue state before replacing
+            // only the empty hint. Actual editing remains native.
+            unsafe {
+                let result = DefSubclassProc(hwnd, msg, w, l);
+                let dc = GetDC(Some(hwnd));
+                if dc.is_invalid() {
+                    return result;
+                }
+                let dark = PAINT_DARK.with(Cell::get);
+                let mut rect = RECT::default();
+                let _ = GetClientRect(hwnd, &mut rect);
+                SetDCBrushColor(dc, edit_key(dark));
+                FillRect(dc, &rect, HBRUSH(GetStockObject(DC_BRUSH).0));
+                SetBkMode(dc, TRANSPARENT);
+                SetTextColor(dc, COLORREF(if dark { 0xd2bdac } else { 0x9c8471 }));
+                let font = SendMessageW(hwnd, WM_GETFONT, None, None);
+                let old = SelectObject(dc, HGDIOBJ(font.0 as *mut _));
+                let mut hint: Vec<u16> = "写下一件事…".encode_utf16().collect();
+                DrawTextW(
+                    dc,
+                    &mut hint,
+                    &mut rect,
+                    DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+                );
+                SelectObject(dc, old);
+                ReleaseDC(Some(hwnd), dc);
+                return result;
+            }
+        }
         WM_KEYDOWN if w.0 == VK_TAB.0 as usize && !COMPOSING.with(Cell::get) => {
             MAIN.with(|m| unsafe {
                 let _ = PostMessageW(Some(m.get()), KEY_NAV, WPARAM(0), LPARAM(0));
             });
             return LRESULT(0);
         }
-        WM_IME_STARTCOMPOSITION => COMPOSING.with(|c| c.set(true)),
+        WM_IME_STARTCOMPOSITION => {
+            COMPOSING.with(|c| c.set(true));
+            if control_id == INPUT {
+                // The IME may draw its composition in a separate window,
+                // without making EDIT repaint the previous empty hint.
+                unsafe {
+                    SendMessageW(
+                        hwnd,
+                        EM_SETCUEBANNER,
+                        Some(WPARAM(0)),
+                        Some(LPARAM(w!("").0 as isize)),
+                    );
+                    let _ = InvalidateRect(Some(hwnd), None, true);
+                    let _ = UpdateWindow(hwnd);
+                }
+            }
+        }
         WM_IME_ENDCOMPOSITION => {
             COMPOSING.with(|c| c.set(false));
             IME_ENDED.with(|c| c.set(Some(Instant::now())));
+            if control_id == INPUT {
+                unsafe {
+                    SendMessageW(
+                        hwnd,
+                        EM_SETCUEBANNER,
+                        Some(WPARAM(1)),
+                        Some(LPARAM(w!("写下一件事…").0 as isize)),
+                    );
+                    let _ = InvalidateRect(Some(hwnd), None, true);
+                }
+            }
         }
         WM_KEYDOWN if w.0 == VK_RETURN.0 as usize => {
             let recent = IME_ENDED.with(|c| c.get().is_some_and(|t| t.elapsed().as_millis() < 120));
@@ -237,8 +325,12 @@ unsafe extern "system" fn edit_proc(
         WM_KILLFOCUS => {
             MAIN.with(|m| unsafe {
                 let _ = PostMessageW(Some(m.get()), COMMIT, WPARAM(hwnd.0 as usize), LPARAM(1));
+                let _ = PostMessageW(Some(m.get()), FRAME, WPARAM(0), LPARAM(0));
             });
         }
+        WM_SETFOCUS => MAIN.with(|m| unsafe {
+            let _ = PostMessageW(Some(m.get()), FRAME, WPARAM(0), LPARAM(0));
+        }),
         _ => {}
     }
     unsafe { DefSubclassProc(hwnd, msg, w, l) }
@@ -290,6 +382,7 @@ struct App {
     rows: Vec<Row>,
     scroll: f32,
     hover: Option<String>,
+    header_hover: Option<usize>,
     selected: Option<String>,
     dirty: bool,
     visible: bool,
@@ -302,13 +395,27 @@ struct App {
     error: Option<String>,
     quit: bool,
     font: HFONT,
+    font_line_px: i32,
     taskbar_created: u32,
     icon: HICON,
     graphic_retry: Option<Instant>,
     session_locked: bool,
     suspended: bool,
 }
+fn header_rect(width: f32, index: usize) -> D2D_RECT_F {
+    gfx::rect(width - 133.0 + 41.0 * index as f32, 17.0, 32.0, 32.0)
+}
 impl App {
+    fn header_hit(&self, x: f32, y: f32) -> Option<usize> {
+        let w = self.size.0 as f32 / self.scale;
+        if !self.model.settings.titlebar {
+            return None;
+        }
+        (0..3).find(|index| {
+            let r = header_rect(w, *index);
+            x >= r.left - 4.0 && x < r.right + 4.0 && y >= r.top - 4.0 && y < r.bottom + 4.0
+        })
+    }
     fn begin_drag(&mut self, x: f32, y: f32) -> bool {
         if self.model.settings.locked {
             return false;
@@ -327,12 +434,7 @@ impl App {
             52.0
         } else {
             26.0
-        } && x < width
-            - if self.model.settings.mode == Mode::Edge {
-                152.0
-            } else {
-                111.0
-            }
+        } && x < width - 152.0
         {
             geometry::Gesture::Move
         } else {
@@ -608,7 +710,7 @@ impl App {
                 DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS,
                 CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
+                ANTIALIASED_QUALITY,
                 DEFAULT_PITCH.0 as u32,
                 w!("Microsoft YaHei UI"),
             );
@@ -624,6 +726,7 @@ impl App {
                     }
                 }
                 let old = std::mem::replace(&mut self.font, font);
+                self.font_line_px = font_line_height(font, self.scale);
                 let _ = DeleteObject(old.into());
             }
         }
@@ -698,7 +801,13 @@ impl App {
                 None,
                 None,
             )?;
-            SetLayeredWindowAttributes(h, COLORREF(0), 255, LWA_ALPHA)?;
+            let dark = match self.model.settings.theme {
+                Theme::Dark => true,
+                Theme::Light => false,
+                Theme::System => platform::system_dark(),
+            };
+            PAINT_DARK.with(|d| d.set(dark));
+            SetLayeredWindowAttributes(h, edit_key(dark), 255, LWA_ALPHA | LWA_COLORKEY)?;
             SendMessageW(
                 h,
                 WM_SETFONT,
@@ -706,7 +815,7 @@ impl App {
                 Some(LPARAM(1)),
             );
             SendMessageW(h, EM_SETLIMITTEXT, Some(WPARAM(32767)), Some(LPARAM(0)));
-            let _ = SetWindowSubclass(h, Some(edit_proc), 1, 0);
+            let _ = SetWindowSubclass(h, Some(edit_proc), 1, id);
             Ok(h)
         }
     }
@@ -721,10 +830,11 @@ impl App {
             let _ = SetWindowPos(
                 self.input,
                 None,
-                (28.0 * s) as i32,
-                ((82.0 + shift) * s) as i32,
-                (self.size.0 as f32 - 92.0 * s).max(40.0) as i32,
-                (30.0 * s) as i32,
+                (32.0 * s) as i32,
+                (((INPUT_TOP + shift) * s + (INPUT_HEIGHT * s - self.font_line_px as f32) / 2.0)
+                    .round()) as i32,
+                (self.size.0 as f32 - 98.0 * s).max(40.0) as i32,
+                self.font_line_px,
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
             if self.editing.is_some() {
@@ -1098,8 +1208,20 @@ impl App {
         let theme_changed = PAINT_DARK.with(|d| d.replace(dark) != dark);
         if theme_changed {
             unsafe {
+                let _ = SetLayeredWindowAttributes(
+                    self.input,
+                    edit_key(dark),
+                    255,
+                    LWA_ALPHA | LWA_COLORKEY,
+                );
                 let _ = InvalidateRect(Some(self.input), None, true);
                 if !self.inline.is_invalid() {
+                    let _ = SetLayeredWindowAttributes(
+                        self.inline,
+                        edit_key(dark),
+                        255,
+                        LWA_ALPHA | LWA_COLORKEY,
+                    );
                     let _ = InvalidateRect(Some(self.inline), None, true);
                 }
             }
@@ -1194,37 +1316,79 @@ impl App {
                         28.0,
                         muted,
                     )?;
-                    let edge = self.model.settings.mode == Mode::Edge;
-                    for (label, x, shown) in [
-                        ("⋯", w - if edge { 128.0 } else { 87.0 }, true),
-                        (
-                            if self.model.settings.pinned {
-                                "◆"
-                            } else {
-                                "◇"
-                            },
-                            w - 87.0,
-                            edge,
-                        ),
-                        ("×", w - 46.0, true),
-                    ] {
-                        if !shown {
-                            continue;
+                    let pin_active = match self.model.settings.mode {
+                        Mode::Edge => self.model.settings.pinned,
+                        Mode::Floating => self.model.settings.topmost,
+                        Mode::Desktop => false,
+                    };
+                    for (index, label) in ["⋯", if pin_active { "◆" } else { "◇" }, "×"]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        let button = header_rect(w, index);
+                        let enabled = index != 1 || self.model.settings.mode != Mode::Desktop;
+                        if enabled
+                            && (self.header_hover == Some(index) || (index == 1 && pin_active))
+                        {
+                            gfx::fill(
+                                dc,
+                                button,
+                                9.0,
+                                gfx::color(
+                                    0x378cf5,
+                                    if GetKeyState(VK_LBUTTON.0 as i32) < 0 {
+                                        0.24
+                                    } else {
+                                        0.12
+                                    },
+                                ),
+                            )?;
                         }
-                        gfx::text(dc, &self.gfx.layout(label, 20.0, 30.0)?, x, 20.0, muted)?;
+                        let color = if !enabled {
+                            gfx::color(if dark { 0xaeb7c2 } else { 0x596474 }, 0.35)
+                        } else if index == 1 && pin_active {
+                            accent
+                        } else {
+                            muted
+                        };
+                        gfx::centered_text(dc, &self.gfx, label, 20.0, button, color)?;
                     }
                 }
                 gfx::fill(
                     dc,
-                    gfx::rect(20.0, 72.0 + shift, w - 40.0, 49.0),
-                    13.0,
-                    gfx::color(if dark { 0x2f343b } else { 0xffffff }, 0.55),
+                    gfx::rect(20.0, INPUT_TOP + shift, w - 40.0, INPUT_HEIGHT),
+                    12.0,
+                    gfx::color(0xffffff, if dark { 0.10 } else { 0.65 }),
                 )?;
+                let field = D2D1_ROUNDED_RECT {
+                    rect: gfx::rect(20.0, INPUT_TOP + shift, w - 40.0, INPUT_HEIGHT),
+                    radiusX: 12.0,
+                    radiusY: 12.0,
+                };
+                let focused = GetFocus() == self.input && GetForegroundWindow() == self.hwnd;
+                let border = dc.CreateSolidColorBrush(
+                    &gfx::color(
+                        if focused {
+                            0x378cf5
+                        } else if dark {
+                            0xffffff
+                        } else {
+                            0x7186a0
+                        },
+                        if focused { 0.75 } else { 0.18 },
+                    ),
+                    None,
+                )?;
+                dc.DrawRoundedRectangle(&field, &border, if focused { 1.4 } else { 1.0 }, None);
+                let add = self.gfx.layout("+", 23.0, 32.0)?;
+                add.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER)?;
+                let mut add_metrics = DWRITE_TEXT_METRICS::default();
+                add.GetMetrics(&mut add_metrics)?;
                 gfx::text(
                     dc,
-                    &self.gfx.layout("+", 25.0, 30.0)?,
-                    w - 56.0,
-                    79.0 + shift,
+                    &add,
+                    w - 60.0,
+                    INPUT_TOP + shift + (INPUT_HEIGHT - add_metrics.height) / 2.0,
                     accent,
                 )?;
                 let list_clip = gfx::axis_clip(
@@ -1234,16 +1398,9 @@ impl App {
                 if self.model.todos.is_empty() {
                     gfx::text(
                         dc,
-                        &self.gfx.layout("给此刻，留一点轻盈。", 16.0, w - 64.0)?,
+                        &self.gfx.layout("在上方写下第一件事", 14.0, w - 64.0)?,
                         32.0,
-                        184.0,
-                        muted,
-                    )?;
-                    gfx::text(
-                        dc,
-                        &self.gfx.layout("在上方写下第一件事", 12.0, w - 64.0)?,
-                        32.0,
-                        218.0,
+                        158.0 + shift,
                         muted,
                     )?;
                 }
@@ -1337,19 +1494,19 @@ impl App {
                     } else if !self.model.settings.introduced {
                         "推向主屏右边缘呼出 · Ctrl+Alt+L"
                     } else {
-                        match self.model.settings.mode {
-                            Mode::Edge => "边缘面板",
-                            Mode::Floating => "悬浮窗",
-                            Mode::Desktop => "桌面组件",
-                        }
+                        // The current mode is already visible in the menu;
+                        // leave the lower-left status area quiet.
+                        ""
                     });
-                gfx::text(
-                    dc,
-                    &self.gfx.layout(status, 10.5, w - 48.0)?,
-                    24.0,
-                    h - 35.0,
-                    muted,
-                )?;
+                if !status.is_empty() {
+                    gfx::text(
+                        dc,
+                        &self.gfx.layout(status, 10.5, w - 48.0)?,
+                        24.0,
+                        h - 35.0,
+                        muted,
+                    )?;
+                }
                 drop(pane_clip);
                 let stops = [
                     D2D1_GRADIENT_STOP {
@@ -1512,6 +1669,36 @@ impl App {
             WM_LBUTTONDOWN => {
                 let x = (e.l.0 as i16) as f32 / self.scale;
                 let y = ((e.l.0 >> 16) as i16) as f32 / self.scale;
+                // Color-keyed edit backgrounds let the glass show through.
+                // Route clicks in transparent gaps to the real system editor
+                // so native caret positioning and mouse selection still work.
+                for edit in [self.inline, self.input] {
+                    unsafe {
+                        if edit.is_invalid() || !IsWindowVisible(edit).as_bool() {
+                            continue;
+                        }
+                        let mut point = POINT::default();
+                        let mut rect = RECT::default();
+                        let _ = GetCursorPos(&mut point);
+                        let _ = GetWindowRect(edit, &mut rect);
+                        if point.x >= rect.left
+                            && point.x < rect.right
+                            && point.y >= rect.top
+                            && point.y < rect.bottom
+                        {
+                            let local = LPARAM(
+                                ((point.x - rect.left) & 0xffff) as isize
+                                    | ((((point.y - rect.top) & 0xffff) as isize) << 16),
+                            );
+                            let _ = SetFocus(Some(edit));
+                            SendMessageW(edit, WM_LBUTTONDOWN, Some(e.w), Some(local));
+                            return;
+                        }
+                    }
+                }
+                if self.header_hit(x, y).is_some() {
+                    self.dirty = true;
+                }
                 self.begin_drag(x, y);
             }
             WM_CAPTURECHANGED => self.end_drag(false),
@@ -1727,20 +1914,23 @@ impl App {
                     -44.0
                 };
                 if self.model.settings.titlebar && y < 60.0 {
-                    if x > w - 55.0 {
-                        self.hide_tray()
-                    } else if x > w - 98.0 && self.model.settings.mode == Mode::Edge {
-                        self.model.settings.pinned = !self.model.settings.pinned;
-                        self.save();
-                    } else if x > w - if self.model.settings.mode == Mode::Edge {
-                        145.0
-                    } else {
-                        104.0
-                    } {
-                        self.menu()
+                    match self.header_hit(x, y) {
+                        Some(2) => self.hide_tray(),
+                        Some(1) => match self.model.settings.mode {
+                            Mode::Edge => self.command(206),
+                            Mode::Floating => self.command(207),
+                            Mode::Desktop => {}
+                        },
+                        Some(0) => self.menu(),
+                        _ => {}
                     }
-                } else if (72.0 + shift..122.0 + shift).contains(&y) && x > w - 66.0 {
-                    self.commit(self.input, false)
+                } else if (INPUT_TOP + shift..INPUT_TOP + INPUT_HEIGHT + shift).contains(&y) {
+                    if x > w - 66.0 {
+                        self.commit(self.input, false)
+                    } else {
+                        self.activate_input();
+                        self.dirty = true;
+                    }
                 } else if let Some(id) = self
                     .rows
                     .iter()
@@ -1773,7 +1963,22 @@ impl App {
                     self.update_drag();
                     return;
                 }
+                let x = (e.l.0 as i16) as f32 / self.scale;
                 let y = ((e.l.0 >> 16) as i16) as f32 / self.scale;
+                let header = self.header_hit(x, y);
+                if header != self.header_hover {
+                    self.header_hover = header;
+                    self.dirty = true;
+                    let mut tracking = TRACKMOUSEEVENT {
+                        cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+                        dwFlags: TME_LEAVE,
+                        hwndTrack: self.hwnd,
+                        ..Default::default()
+                    };
+                    unsafe {
+                        let _ = TrackMouseEvent(&mut tracking);
+                    }
+                }
                 let hovered = self
                     .rows
                     .iter()
@@ -1783,6 +1988,11 @@ impl App {
                     self.hover = hovered;
                     self.dirty = true;
                 }
+            }
+            WM_MOUSELEAVE => {
+                self.header_hover = None;
+                self.hover = None;
+                self.dirty = true;
             }
             WM_MOUSEWHEEL => {
                 if self.editing.is_none() {
@@ -1949,7 +2159,7 @@ unsafe fn run_inner() -> Result<()> {
             DEFAULT_CHARSET,
             OUT_DEFAULT_PRECIS,
             CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
+            ANTIALIASED_QUALITY,
             DEFAULT_PITCH.0 as u32,
             w!("Microsoft YaHei UI"),
         );
@@ -1981,6 +2191,7 @@ unsafe fn run_inner() -> Result<()> {
             rows: Vec::new(),
             scroll: 0.0,
             hover: None,
+            header_hover: None,
             selected: None,
             dirty: true,
             visible: true,
@@ -1993,6 +2204,7 @@ unsafe fn run_inner() -> Result<()> {
             error,
             quit: false,
             font,
+            font_line_px: font_line_height(font, scale),
             taskbar_created: RegisterWindowMessageW(w!("TaskbarCreated")),
             icon,
             graphic_retry: None,
