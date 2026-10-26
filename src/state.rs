@@ -35,6 +35,15 @@ impl Default for WindowState {
     }
 }
 impl WindowState {
+    pub fn timer_interval(&self, visible: bool, paused: bool, minimized: bool) -> Option<u32> {
+        if paused || minimized || (!visible && self.phase != Phase::Hidden) {
+            None
+        } else if (self.progress - self.target).abs() > 0.001 {
+            Some(16)
+        } else {
+            Some(80)
+        }
+    }
     pub fn show(&mut self) {
         self.target = 1.0;
         self.phase = match self.mode {
@@ -182,5 +191,19 @@ mod tests {
         assert_eq!(s.progress, progress);
         s.step(80.0, false);
         assert_eq!(s.progress, 1.0);
+    }
+    #[test]
+    fn tray_and_paused_windows_do_not_poll_but_hidden_edge_still_detects_pointer() {
+        let mut s = WindowState::default();
+        assert_eq!(s.timer_interval(false, false, false), None);
+        assert_eq!(s.timer_interval(true, true, false), None);
+        assert_eq!(s.timer_interval(true, false, true), None);
+        s.hide();
+        assert_eq!(s.timer_interval(true, false, false), Some(16));
+        s.step(220.0, false);
+        assert_eq!(s.timer_interval(false, false, false), Some(80));
+        s.mode(Mode::Floating);
+        assert_eq!(s.timer_interval(false, false, false), None);
+        assert_eq!(s.timer_interval(true, false, false), Some(80));
     }
 }

@@ -64,6 +64,20 @@ impl Gfx {
     pub fn d3d(&self) -> Result<ID3D11Device> {
         Ok(self.d3d.clone())
     }
+    /// Reclaim unused renderer/driver caches only when entering a long idle
+    /// period. Live resources have already been released by the caller.
+    pub fn trim_idle(&self) {
+        unsafe {
+            self.device.ClearResources(0);
+            if let Ok(context) = self.d3d.GetImmediateContext() {
+                context.ClearState();
+                context.Flush();
+            }
+            if let Ok(dxgi) = self.d3d.cast::<IDXGIDevice3>() {
+                dxgi.Trim();
+            }
+        }
+    }
     pub fn layout(&self, text: &str, size: f32, width: f32) -> Result<IDWriteTextLayout> {
         unsafe {
             let format = self.write.CreateTextFormat(

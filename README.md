@@ -24,6 +24,8 @@ cargo run --locked
 
 菜单已按「窗口模式 / 外观 / 位置与行为」分组，设置分为「外观 / 窗口 / 通用」三页。实际运行截图和验证范围见 [菜单与设置改版](docs/menu-redesign.md)。
 
+本机资源占用的实际数值、测量方法和优化状态见 [资源占用记录](docs/performance.md)。
+
 完整开发检查和 EXE 打包入口见 [releasing.md](docs/releasing.md)。正式标签自动发布流程已配置，但本机验收记录仍为 pending，当前不能发布正式版本。桌面已经解锁，真实交互验收继续进行。
 
 架构与来源见 [architecture.md](docs/architecture.md)；许可见 [LICENSE](LICENSE) 和 [第三方声明](THIRD_PARTY_NOTICES.md)。

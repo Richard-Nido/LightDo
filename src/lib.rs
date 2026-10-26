@@ -52,7 +52,9 @@ pub mod diagnostics {
                 let mut cloaked = 0u32;
                 let _ =
                     DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &mut cloaked as *mut _ as *mut _, 4);
-                panel = serde_json::json!({"visible":IsWindowVisible(hwnd).as_bool(),"minimized":IsIconic(hwnd).as_bool(),"showCommand":placement.showCmd,"dpi":GetDpiForWindow(hwnd),"cloaked":cloaked,"rect":[r.left,r.top,r.right,r.bottom],"foreground":GetForegroundWindow()==hwnd});
+                let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+                let popup = GetLastActivePopup(hwnd);
+                panel = serde_json::json!({"visible":IsWindowVisible(hwnd).as_bool(),"minimized":IsIconic(hwnd).as_bool(),"showCommand":placement.showCmd,"dpi":GetDpiForWindow(hwnd),"cloaked":cloaked,"rect":[r.left,r.top,r.right,r.bottom],"foreground":GetForegroundWindow()==hwnd,"topmost":ex & WS_EX_TOPMOST.0 != 0,"toolWindow":ex & WS_EX_TOOLWINDOW.0 != 0,"visibleOwnedPopup":popup != hwnd && IsWindowVisible(popup).as_bool()});
             }
             let mut session = serde_json::Value::Null;
             let mut p = PWSTR::null();

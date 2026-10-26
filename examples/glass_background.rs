@@ -73,7 +73,11 @@ fn main() {
             ..Default::default()
         });
         let hwnd = CreateWindowExW(
-            WINDOW_EX_STYLE(0),
+            if std::env::args().any(|arg| arg == "--topmost") {
+                WS_EX_TOPMOST
+            } else {
+                WINDOW_EX_STYLE(0)
+            },
             w!("LightDo.TestBackground"),
             w!("LightDo 无隐私玻璃测试背景"),
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,

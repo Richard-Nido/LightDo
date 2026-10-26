@@ -427,6 +427,13 @@ impl App {
             surface.release(&self.gfx);
         }
     }
+    fn idle_graphics(&mut self) {
+        self.scene = None;
+        self.background = None;
+        self.lens = None;
+        self.release_surface();
+        self.gfx.trim_idle();
+    }
     fn recover_graphics(&mut self, error: windows::core::Error) {
         self.error = Some(format!("图形设备暂不可用，正在恢复：{}", error.code()));
         if self
@@ -625,6 +632,8 @@ impl App {
         self.visible = true;
         self.minimized = false;
         self.state.show();
+        self.last_tick = Instant::now();
+        self.schedule_tick();
         unsafe {
             let _ = SetWindowPos(
                 self.hwnd,
@@ -655,16 +664,15 @@ impl App {
     fn hide_tray(&mut self) {
         settings_ui::close();
         self.visible = false;
-        self.background = None;
-        self.scene = None;
-        self.release_surface();
+        self.idle_graphics();
+        self.schedule_tick();
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
         }
         if !self.model.settings.tray_tip_shown {
             self.model.settings.tray_tip_shown = true;
             self.save();
-            self.message("轻待仍在托盘运行。点击托盘图标或按 Ctrl+Alt+L 找回；右键托盘可退出。");
+            self.tray_hint();
         }
     }
     fn editor(&self, id: usize) -> Result<HWND> {
@@ -832,6 +840,8 @@ impl App {
         self.scene = None;
         self.background = None;
         self.visible = true;
+        self.last_tick = Instant::now();
+        self.schedule_tick();
         unsafe {
             let top =
                 if mode == Mode::Edge || (mode == Mode::Floating && self.model.settings.topmost) {
@@ -891,7 +901,35 @@ impl App {
             );
         }
     }
+    fn schedule_tick(&self) {
+        unsafe {
+            match self.state.timer_interval(
+                self.visible,
+                self.session_locked || self.suspended,
+                self.minimized,
+            ) {
+                Some(interval) => {
+                    SetTimer(Some(self.controller), 1, interval, None);
+                }
+                None => {
+                    let _ = KillTimer(Some(self.controller), 1);
+                }
+            }
+        }
+    }
     fn tick(&mut self) {
+        if self
+            .state
+            .timer_interval(
+                self.visible,
+                self.session_locked || self.suspended,
+                self.minimized,
+            )
+            .is_none()
+        {
+            self.schedule_tick();
+            return;
+        }
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_tick).as_secs_f32() * 1000.0;
         self.last_tick = now;
@@ -985,17 +1023,15 @@ impl App {
         if self.visible {
             self.arrange_background();
         }
-        let interval = if (self.state.progress - self.state.target).abs() > 0.001 {
-            16
-        } else {
-            80
-        };
-        unsafe {
-            SetTimer(Some(self.controller), 1, interval, None);
-        }
+        self.schedule_tick();
     }
     fn arrange_background(&mut self) {
-        if !self.material.glass() || self.session_locked || self.suspended || self.minimized {
+        if !self.visible
+            || !self.material.glass()
+            || self.session_locked
+            || self.suspended
+            || self.minimized
+        {
             self.scene = None;
             self.background = None;
             return;
@@ -1489,15 +1525,18 @@ impl App {
                 self.scene = None;
                 self.background = None;
                 self.lens = None;
+                if self.suspended {
+                    self.idle_graphics();
+                }
                 self.reposition();
                 self.dirty = true;
+                self.last_tick = Instant::now();
+                self.schedule_tick();
             }
             WM_WTSSESSION_CHANGE => {
                 if e.w.0 == WTS_SESSION_LOCK as usize {
                     self.session_locked = true;
-                    self.scene = None;
-                    self.background = None;
-                    self.release_surface();
+                    self.idle_graphics();
                 } else if e.w.0 == WTS_SESSION_UNLOCK as usize {
                     self.session_locked = false;
                     self.scene = None;
@@ -1505,6 +1544,8 @@ impl App {
                     self.reposition();
                     self.dirty = true;
                 }
+                self.last_tick = Instant::now();
+                self.schedule_tick();
             }
             settings_ui::CHANGED => {
                 if let Some(settings) = settings_ui::take() {
@@ -1590,9 +1631,8 @@ impl App {
                 }
                 if e.w.0 == SIZE_MINIMIZED as usize {
                     self.minimized = true;
-                    self.scene = None;
-                    self.background = None;
-                    self.release_surface();
+                    self.idle_graphics();
+                    self.schedule_tick();
                     return;
                 }
                 self.minimized = false;
@@ -1610,6 +1650,7 @@ impl App {
                 }
                 self.dirty = true;
                 self.layout_editors();
+                self.schedule_tick();
             }
             WM_MOVE => {
                 self.dirty = true;
@@ -1772,6 +1813,25 @@ impl App {
             let tip: Vec<u16> = "轻待 LightDo".encode_utf16().collect();
             info.szTip[..tip.len()].copy_from_slice(&tip);
             let _ = Shell_NotifyIconW(if add { NIM_ADD } else { NIM_DELETE }, &info);
+        }
+    }
+    fn tray_hint(&self) {
+        unsafe {
+            let mut info = NOTIFYICONDATAW {
+                cbSize: size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: self.controller,
+                uID: 1,
+                uFlags: NIF_INFO,
+                dwInfoFlags: NIIF_INFO,
+                ..Default::default()
+            };
+            let title: Vec<u16> = "轻待已隐藏到托盘".encode_utf16().collect();
+            let text: Vec<u16> = "点击托盘图标或使用呼出快捷键找回；右键托盘可退出。"
+                .encode_utf16()
+                .collect();
+            info.szInfoTitle[..title.len()].copy_from_slice(&title);
+            info.szInfo[..text.len()].copy_from_slice(&text);
+            let _ = Shell_NotifyIconW(NIM_MODIFY, &info);
         }
     }
 }
