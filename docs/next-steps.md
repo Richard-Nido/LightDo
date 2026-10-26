@@ -5,7 +5,7 @@
 ## 当前事实
 
 - 版本1.0.0已准备，尚未正式发布；release-acceptance.json保持pending，所有门槛仍false。
-- GitHub Richard-Nido登录有效；cf8de57的CI 40296556997成功。之后右边缘/动画/资源改动需提交、推送与跟踪新CI。
+- GitHub Richard-Nido登录有效；右边缘/动画/资源改动已提交ac2bbbb并推送，CI 40355360971成功。
 - 当前实际使用安装路径 `%LOCALAPPDATA%\Programs\LightDo\lightdo.exe`，正式数据目录 `%APPDATA%\LightDo`；升级测试从隔离数据复制了四条合成任务。不要再误认运行的是旧隔离实例。
 - 实际0.1.0→1.0.0升级，状态文件字节与新payload匹配通过；保留安装供GUI验收。同版本后续覆盖也核对数据未变。
 - 用户允许恢复自动桌面验收。用computer-use @oai/sky，按返回窗口选择，禁止Windows键、Codex/认证/安全UI和替代输入通道。用户物理Esc则停止输入。Win+D新版往返已有用户手测通过。
@@ -20,8 +20,8 @@
 
 ## 下一步
 
-1. 完成当前右边缘最新安装构建隐藏采样，更新performance.md；继续真实动画/玻璃首帧、键盘与设置/模式交互。
-2. 实际DPI100/125/200%、Explorer/锁屏/睡眠、全屏、拖出重停靠等；本机单屏不能伪造多屏证据。
+1. 当前ac50a954...安装构建隐藏采样33.72秒已完成，CPU0.0046%、GPU0%、工作集91.66MiB、共享GPU71.35MiB，详见performance.md；继续真实动画/玻璃首帧、键盘与设置/模式交互。
+2. 2026-10-27已实际系统设置150→100→125→200→150，同一PID324，右边缘呼出/布局/玻璃和中文候选定位/取消组合正常，四条任务未变；恢复后窗口DPI144。原始诊断local-evidence/dpi-*-shown.json及dpi-150-restored.json。继续Explorer/锁屏/睡眠、全屏、拖出重停靠等；本机单屏不能伪造多屏证据。
 3. 继续安装GUI及主动删除/自启清理，完成最终候选全部关键回归。
 4. 只有真实门槛通过才finalize-acceptance，然后release -Publish，跟踪Actions、下载校验及安装。用户已授权，无需再次询问发布。
 5. 验收和正式Release完成后实际clean-delivery；目前只预览过，不要声称工作目录已清理。
