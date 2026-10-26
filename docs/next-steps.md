@@ -1,41 +1,43 @@
 # 当前接续点
 
-目标仍为完整LightDo、本机真实验收、Windows x64安装包、公开正式Release及最终目录清理。用户已授权发布，确认使用Richard-Nido/LightDo，不重复询问需求或推送权限。
+完整目标仍为LightDo、本机真实验收、Windows安装包、公开正式Release和最终目录清理。用户已授权推送和正式发布，不重复询问产品需求或发布权限。
 
-## 当前事实
+## 当前运行状态（2026-10-27）
 
-- 版本1.0.0已准备，尚未正式发布；release-acceptance.json保持pending，所有门槛仍false。
-- GitHub Richard-Nido登录有效；右边缘/动画/资源改动已提交ac2bbbb并推送，CI 40355360971成功。
-- 当前实际使用安装路径 `%LOCALAPPDATA%\Programs\LightDo\lightdo.exe`，正式数据目录 `%APPDATA%\LightDo`；升级测试从隔离数据复制了四条合成任务。不要再误认运行的是旧隔离实例。
-- 实际0.1.0→1.0.0升级，状态文件字节与新payload匹配通过；保留安装供GUI验收。同版本后续覆盖也核对数据未变。
-- 用户允许恢复自动桌面验收。用computer-use @oai/sky，按返回窗口选择，禁止Windows键、Codex/认证/安全UI和替代输入通道。用户物理Esc则停止输入。Win+D新版往返已有用户手测通过。
-- 输入、标题、行布局和菜单要求见product-decisions.md；当前安装已实际行内提交、长文本完成/撤销、缩小重排、150%拼音Space选词/Enter新增、浅色玻璃。未观察上述操作抖动，不夸大为所有偶发问题消失。
-- 默认/当前右侧。边缘条计入交互区，Esc手动关闭须离开再进入；托盘隐藏单独状态停用检测；回访用户启动自然收回。呼出先在隐藏状态预备真实背景和合成表面，再滑入，目标220ms，遵守系统减少动画。
-- 普通最大化标题窗不再误判全屏。真实右边缘鼠标展开、留边不抖、离开收回、CtrlAltL和Esc同PID均已观察。
-- 系统动画原为关闭，已临时通过设置打开并观察实际滑入，诊断left递进2568→2023；结束已恢复关闭。不要只凭代码声称60fps或反向手势均通过。
-- 捕获池隐藏时Scene.rest复用，停止场景处理/读取，不每次销毁重建；5秒后释放镜头及表面并DXGI Trim。诊断区别captureAllocated与captureActive，隐藏应active=false，允许池仍allocated。
-- 同进程10次展开/收回后约49秒：CPU0.0032%、GPU0%、工作集平均95.50MiB、私有70.77MiB、共享GPU74.75MiB，47样本隐藏。哈希058023...为该10次构建；后来又加计时器仅变更才重设及64ms长帧钳制，当前安装哈希ac50a954...，需对应其最新测量，不混用。
-- 旧GDI测试背景会被捕获到纯色/半绘制帧，曾导致第8次短暂纯色面板。例程已改为内存整帧BitBlt；当前新例程位于target/candidate/.../examples，不要重启旧root例程。仍需复核首帧与闪烁，不能据此虚报完全解决。
-- 当前32项测试：23通过、9忽略；原生捕获专项及60秒压力证据见verification.md。先前夹具DWM cloak失败已定位，未采用丢首帧/会话重建实验。
+- 源码main已推送1665d0f，CI 40381163180成功；正式版本候选1.0.0，release-acceptance.json仍pending，尚无正式标签和Release。
+- 已安装EXE为%LOCALAPPDATA%/Programs/LightDo/lightdo.exe，SHA-256 c3edc3d2429b8a35d919c56452804527cb9fd0946394a4ed9186db28db60d7de。数据%APPDATA%/LightDo/state.json，四条合成任务。
+- Windows刚实际锁定，诊断lockFlag=0/locked=true；已停止所有桌面输入，通过异步问题请求解锁。解锁前不要继续CUA，也不要把锁定界面当作可操作桌面。
+- 两个glass_background测试进程均已按准确路径核对后结束；没有强杀LightDo。全屏用例已启动但在激活时发现锁屏，未完成，不可写PASS。
+- 偏好已恢复为Edge/Right/Light/48、350×547、Ctrl+Alt+L、自启关闭、pinned=false/locked=false/topmost=false。恢复时正常退出，保留当前全部任务，只原子恢复测试前的设置；任务摘要一致。随后已重启已安装版，保持此实例以检查真实解锁恢复。
+
+## 本轮新增实际验收
+
+- 透明度48→70及恢复48；深色、跟随系统（当前系统暗色）和浅色恢复，设置应用/文件读回正常。
+- 固定展开后鼠标/焦点移至测试背景，面板仍显示，phase=Pinned；锁定后标题拖动及右下角缩放均保持矩形；锁定仍可双击行内编辑并Esc退出。
+- 真实原生下拉框完成Edge→Floating→Desktop→Edge，同一面板句柄，四条任务保持。Floating非置顶、开启置顶、恢复非置顶的实际窗口属性正确；不适用选项禁用。
+- 发现设置窗口原先附属于主面板，Desktop切换会把设置也沉到底层。已改为独立顶层、可任务切换窗口；含修正安装版实际切Desktop后设置仍可见并能操作返回Edge。
+- 用户两次确认设置菜单及Ctrl+F10正常。此前助手把工具未列出误判为设置关闭，已经向用户纠正。设置现在可被工具列出，不再需要用户保持打开。
+- 自启实际开启后HKCU Run指向已安装EXE并带--startup，关闭后登记消失。未注销/重启Windows，不能据此称登录启动已通过。
+- 实际临时注册Ctrl+Alt+Shift+F8制造冲突，设置显示冲突提示，保留旧Ctrl+Alt+L；关闭提示、释放测试注册后新键保存成功，实际从隐藏呼出且foreground=true。
+- 恢复默认→应用实际读回Edge/Right/System/48/400×600/400ms/250ms/Ctrl+Alt+L/自启关闭，任务摘要不变。随后已恢复用户测试前偏好（见上文），不遗留测试F8快捷键。
+- 32测试中23通过、9真实桌面实验忽略；不要把忽略项记PASS。完整证据verification.md，原始无正文诊断local-evidence内。
+- 先前DPI150→100→125→200→150的右边缘布局与中文候选位置已实测；当前系统恢复150%，动画偏好恢复关闭。Win+D新版已有用户手测通过。
 
 ## 下一步
 
-2026-10-27最新接续：用户确认菜单设置与Ctrl+F10“都正常，快捷键正常”。确认后设置已关闭，已通过异步问题请求“再次打开并保持打开”，当前等待该操作；不要擅自判为已保持打开或连续代按组合键。面板当前由已安装EXE运行，哈希2b7245d7...，包含滑入后再激活修正，实际foreground=true且持续展开。源码还新增菜单中正常关闭/退出先EndMenu（已构建/23测试通过，但未安装回归）；不要用源代码推断该项运行通过。
+1. 等用户解锁，先读本机诊断确认locked=false，再刷新Sky窗口选择。检查同一进程正常呼出/输入恢复。
+2. 真实全屏避让：root target中的最新glass_background支持--fullscreen/--static且为整帧绘制，hash56df251e...。它是可见交互测试窗口，启动后需实际前台/边界成立；此前激活失败是锁屏，不能归因产品崩溃。主应用继续用已安装版或candidate，root lightdo.exe仍旧。
+3. 剩余真实项目：左右防误触/反向/关联菜单、拖出与重新停靠、剪贴板/键盘删除/多任务滚动、Explorer/锁屏/睡眠恢复、安装GUI/卸载保留及主动删除。不要反复问已确认产品需求。
+4. 自启登记清除已测，注销后实际启动未测；本机仅一个物理显示器，不伪造多屏主屏/断开证据。
+5. 完成本机关键验收后才finalize-acceptance和release -Publish。发布脚本先草稿上传，重新下载逐一核对SHA后公开，保护真实退出码；本地六项资产、篡改与缺失资产预检已验证，真实发布未执行。
+6. 正式下载校验安装之后才执行清理。清理脚本现在会识别并删除旧0.1.0安装包/许可，只保留当前版本；已预览，未执行。最新编辑含scripts/clean-delivery.ps1与check.ps1语法检查，需提交及跟踪CI。
 
-发布脚本新增scripts/publish-release.ps1：显式草稿上传、重新下载六项资产逐文件SHA匹配后才公开；本地完整资产、篡改副本、缺失许可前置验证已通过/正确拒绝，尚未实际上传草稿。release.ps1已补子检查/打包脚本非零退出码保护，finalize提交使用Invoke-Checked。原正式门槛仍pending，不能先推标签。
+## 桌面工具与安全
 
-无隐私测试背景增加--fullscreen用于全屏避让。candidate背景仍在运行导致链接文件占用，已在root target成功重建最新整帧/全屏例程（哈希56df251e...）；仅root的该例程是新构建，root lightdo.exe仍旧，应用继续只用candidate或已安装路径。尚未启动全屏例程验收。
+使用computer-use的@oai/sky；禁止Windows键、认证/安全/密码管理器/Codex UI，用户物理Esc则停止。所有持久状态统一用globalThis属性引用，避免先前顶层let/const（尤其fs、ss、sw等）遮蔽产生旧值；不要把node fs模块当作Window传入。由list_windows/list_apps返回对象唯一选择，每次用新state.window和截图ID操作。切换窗口后先刷新；UIA下拉set_value可能不触发原生CBN，模式宜点实际下拉项。
 
-1. 当前ac50a954...安装构建隐藏采样33.72秒已完成，CPU0.0046%、GPU0%、工作集91.66MiB、共享GPU71.35MiB，详见performance.md；继续真实动画/玻璃首帧、键盘与设置/模式交互。
-2. 2026-10-27已实际系统设置150→100→125→200→150，同一PID324，右边缘呼出/布局/玻璃和中文候选定位/取消组合正常，四条任务未变；恢复后窗口DPI144。原始诊断local-evidence/dpi-*-shown.json及dpi-150-restored.json。继续Explorer/锁屏/睡眠、全屏、拖出重停靠等；本机单屏不能伪造多屏证据。
-3. 继续安装GUI及主动删除/自启清理，完成最终候选全部关键回归。
-4. 只有真实门槛通过才finalize-acceptance，然后release -Publish，跟踪Actions、下载校验及安装。用户已授权，无需再次询问发布。
-5. 验收和正式Release完成后实际clean-delivery；目前只预览过，不要声称工作目录已清理。
+不要再用PowerShell FindWindow(class,$null)的false作为窗口不存在证据：字符串空值绑定可能不等于原生NULL。只读EnumWindows按本应用PID过滤曾确认设置真实可见；不得用它绕过Sky注入输入或构造未由Sky返回的Window。
 
-## 工具
+Rust1.99.1 MSVC/VS17.14.42/SDK10.0.26100/NSIS3.12，gh在.tools/gh/bin/gh.exe。构建CARGO_TARGET_DIR=工作区/target/candidate；脚本遵守该路径并核对版本。当前EXE依赖检查627200字节、未签名，直接导入只见Windows系统DLL，未见VC运行库DLL。
 
-Rust1.99.1 MSVC、VS17.14.42、SDK10.0.26100、NSIS3.12，gh位于.tools/gh/bin/gh.exe。构建使用CARGO_TARGET_DIR=工作区/target/candidate，scripts/build.ps1与package.ps1遵守该路径并检查资源版本。不要拿旧root二进制验收最新源码。
-
-正常--shutdown退出LightDo，不强杀。只在得到真实session_id时轮询；不要重启仍活进程代替等待。保留用户数据，清理严格限定工作区内已核对路径。
-
-2026-10-27 设置与模式实测已补齐：透明度/主题、悬浮与置顶、固定展开、锁定、防冲突快捷键、自启登记/清除、恢复默认及含独立设置窗口修正的 Desktop→Edge 回归均有本机证据；注销后自启、Explorer/锁屏/睡眠、卸载主动删除和正式发布仍待。
+锁屏等待期间已新增scripts/test-clean-delivery.ps1并接入check.ps1：隔离合成Git仓库的脏树/已跟踪文件拒绝及真实合成文件删除/保留均通过；真实项目仍未清理。清理旧版本文件、根/父目录链接保护、CRLF版本识别已补，只有最终交付完成后才对实际项目执行。未来不必为此重复创建无意义文档CI循环。

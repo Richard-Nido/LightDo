@@ -6,7 +6,7 @@ param(
 . "$PSScriptRoot/common.ps1"
 $assetRoot = (Resolve-Path -LiteralPath $AssetsDirectory).Path
 $version = $Tag.Substring(1)
-$sourceVersion = [regex]::Match((Get-Content -Raw 'Cargo.toml'), '(?m)^version = "([^"]+)"$').Groups[1].Value
+$sourceVersion = [regex]::Match((Get-Content -Raw 'Cargo.toml'), '(?m)^version = "([^"]+)"\r?$').Groups[1].Value
 if ($version -ne $sourceVersion) { throw '发布标签与源码版本不一致。' }
 $expected = @("LightDo_${version}_x64-setup.exe", "LightDo_${version}_licenses.zip", 'SHA256SUMS.txt',
     'THIRD_PARTY_DEPENDENCIES.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md')

@@ -11,7 +11,7 @@ if ($Prepare) {
     & git show-ref --verify --quiet "refs/tags/v$Version"
     if ($LASTEXITCODE -eq 0) { throw '该版本标签已存在，禁止改写。' }
     $manifest=Get-Content -Raw -LiteralPath 'Cargo.toml'
-    $manifest=[regex]::Replace($manifest,'(?m)^version = "\d+\.\d+\.\d+"$',"version = `"$Version`"",1)
+    $manifest=[regex]::Replace($manifest,'(?m)^version = "\d+\.\d+\.\d+"\r?$',"version = `"$Version`"",1)
     [IO.File]::WriteAllText((Join-Path $script:ProjectRoot 'Cargo.toml'),$manifest,[Text.UTF8Encoding]::new($false))
     Invoke-Checked (Find-Cargo) update -p lightdo
     $acceptance=Get-Content -Raw 'docs/release-acceptance.json' | ConvertFrom-Json
