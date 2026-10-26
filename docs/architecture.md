@@ -18,7 +18,7 @@ Glance 的 glass.rs 是系统 HostBackdrop 毛玻璃；skins.rs 的 Glass 才使
 
 ## 数据与发布边界
 
-计划数据路径 `%APPDATA%\LightDo\state.json`；版本化 JSON，串行同步落盘、临时文件 flush 后原子替换。读取失败保持原文件且禁写，不用空数据覆盖。导入 QuietDo 只复制且由用户显式选择。
+数据路径 `%APPDATA%\LightDo\state.json`；版本化 JSON，串行同步落盘、临时文件 flush 后原子替换。读取失败保持原文件且禁写，不用空数据覆盖。按用户后续要求，不提供 QuietDo 或其他应用的数据导入，见 product-decisions.md。
 
 当前最低实际测试系统是本机 Windows 11 26H2 build 26300.9711 x64；注册表 ProductName 仍称 Windows 10，不能据此误判系统版本。其他 Windows 11 构建尚未验证。
 

@@ -47,7 +47,6 @@ pub struct Settings {
     pub autostart: bool,
     pub introduced: bool,
     pub tray_tip_shown: bool,
-    pub import_decided: bool,
     pub x: i32,
     pub y: i32,
     pub width: i32,
@@ -73,7 +72,6 @@ impl Default for Settings {
             autostart: false,
             introduced: false,
             tray_tip_shown: false,
-            import_decided: false,
             x: 160,
             y: 120,
             width: 400,
@@ -166,18 +164,6 @@ impl Model {
     pub fn delete(&mut self, id: &str) {
         self.todos.retain(|t| t.id != id)
     }
-    pub fn import(&mut self, text: &str) -> Result<usize, String> {
-        let todos: Vec<Todo> = serde_json::from_str(text).map_err(|_| "QuietDo 数据格式无效")?;
-        let mut check = self.clone();
-        check.todos = todos.clone();
-        check.validate()?;
-        let old: HashSet<String> = self.todos.iter().map(|t| t.id.clone()).collect();
-        let added: Vec<_> = todos.into_iter().filter(|t| !old.contains(&t.id)).collect();
-        let count = added.len();
-        self.todos.extend(added);
-        self.settings.import_decided = true;
-        Ok(count)
-    }
 }
 #[cfg(test)]
 mod tests {
@@ -203,13 +189,18 @@ mod tests {
         assert_eq!(m.todos, again.todos);
     }
     #[test]
-    fn import_is_explicit_and_deduplicated() {
-        let mut m = Model::default();
-        let json = r#"[{"id":"quiet-1","text":"原有任务","done":true}]"#;
-        assert_eq!(m.import(json).unwrap(), 1);
-        assert_eq!(m.import(json).unwrap(), 0);
-        assert!(m.import("bad").is_err());
-        assert_eq!(m.todos.len(), 1);
+    fn retired_preference_does_not_break_existing_lightdo_data() {
+        let json = r#"{"version":1,"todos":[{"id":"existing","text":"已有任务","done":true}],"settings":{"import_decided":true}}"#;
+        let m: Model = serde_json::from_str(json).unwrap();
+        assert!(m.validate().is_ok());
+        assert_eq!(m.todos[0].id, "existing");
+        assert_eq!(m.todos[0].text, "已有任务");
+        assert!(m.todos[0].done);
+        assert!(
+            !serde_json::to_string(&m)
+                .unwrap()
+                .contains("import_decided")
+        );
     }
     #[test]
     fn future_or_duplicate_data_rejected() {

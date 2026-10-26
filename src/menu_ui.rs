@@ -418,16 +418,6 @@ pub fn show(owner: HWND, cfg: &Settings, visible: bool, scale: f32) -> usize {
         );
         p.separator(root);
         p.item(root, 214, "设置…", "", '\u{e713}', false, true, None);
-        p.item(
-            root,
-            217,
-            "导入 QuietDo…",
-            "",
-            '\u{e8b5}',
-            false,
-            true,
-            None,
-        );
         p.separator(root);
         p.item(
             root,

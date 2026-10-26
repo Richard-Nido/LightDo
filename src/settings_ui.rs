@@ -397,7 +397,6 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
                             let c = Settings::default();
                             ui.settings = Settings {
                                 introduced: true,
-                                import_decided: ui.settings.import_decided,
                                 ..c
                             };
                             unsafe { populate(ui) }

@@ -1428,29 +1428,6 @@ impl App {
                     Err(e) => self.error = Some(e),
                 }
             }
-            217 => {
-                let p = std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default())
-                    .join("com.quietdo.app/todos.json");
-                match std::fs::read_to_string(p) {
-                    Ok(text) => {
-                        if unsafe {
-                            MessageBoxW(
-                                Some(self.hwnd),
-                                w!("复制导入 QuietDo 的任务？原文件保持不变，重复 ID 跳过。"),
-                                w!("本地导入"),
-                                MB_YESNO | MB_ICONQUESTION,
-                            )
-                        } == IDYES
-                        {
-                            match self.model.import(&text) {
-                                Ok(_) => {}
-                                Err(e) => self.error = Some(e),
-                            }
-                        }
-                    }
-                    Err(e) => self.error = Some(format!("无法读取 QuietDo 数据：{e}")),
-                }
-            }
             218 => {
                 if self.editing.is_some() {
                     if COMPOSING.with(Cell::get) {

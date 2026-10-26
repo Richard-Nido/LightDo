@@ -20,7 +20,7 @@ cargo test --locked --lib
 cargo run --locked
 ```
 
-右键面板打开模式与外观菜单。`Ctrl+Alt+L` 呼出并输入；双击任务编辑，Enter 提交，Esc 取消。数据位于 `%APPDATA%\LightDo\state.json`；开发验收可用环境变量 `LIGHTDO_DATA_DIR` 指向隔离目录，不会自动读取或修改 QuietDo 数据。
+右键面板打开模式与外观菜单。`Ctrl+Alt+L` 呼出并输入；双击任务编辑，Enter 提交，Esc 取消。数据位于 `%APPDATA%\LightDo\state.json`；开发验收可用环境变量 `LIGHTDO_DATA_DIR` 指向隔离目录。轻待使用独立的数据目录，不提供其他应用的数据导入。
 
 菜单已按「窗口模式 / 外观 / 位置与行为」分组，设置分为「外观 / 窗口 / 通用」三页。实际运行截图和验证范围见 [菜单与设置改版](docs/menu-redesign.md)。
 
