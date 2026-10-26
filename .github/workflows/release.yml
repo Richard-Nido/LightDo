@@ -57,8 +57,4 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $files = @(Get-ChildItem release-assets -Recurse -File | Select-Object -ExpandProperty FullName)
-          if (!($files | Where-Object { $_ -like '*_x64-setup.exe' })) { throw '缺少安装包' }
-          gh release create $env:GITHUB_REF_NAME @files --verify-tag --title "轻待 LightDo $env:GITHUB_REF_NAME" --notes-file docs/release-notes.md
-          if ($LASTEXITCODE -ne 0) { throw '公开 Release 创建失败' }
+        run: ./scripts/publish-release.ps1 -Tag $env:GITHUB_REF_NAME -AssetsDirectory release-assets

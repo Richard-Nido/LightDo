@@ -9,7 +9,6 @@ foreach($field in @('glass','windowModes','chineseIme','installer')){if($accepta
 $fingerprint=& "$PSScriptRoot/source-fingerprint.ps1"
 $acceptance.status='passed';$acceptance.sourceFingerprint=$fingerprint
 $acceptance | ConvertTo-Json | Set-Content -Encoding utf8 'docs/release-acceptance.json'
-git add docs/release-acceptance.json
-git commit -m "chore: record LightDo $version local acceptance fingerprint"
-if($LASTEXITCODE -ne 0){throw '提交验收指纹失败'}
+Invoke-Checked git add docs/release-acceptance.json
+Invoke-Checked git commit -m "chore: record LightDo $version local acceptance fingerprint"
 Write-Output $fingerprint

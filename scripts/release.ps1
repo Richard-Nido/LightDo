@@ -19,7 +19,9 @@ if ($Prepare) {
     foreach ($field in @('glass','windowModes','chineseIme','installer')) { $acceptance.$field=$false }
     $acceptance | ConvertTo-Json | Set-Content -Encoding utf8 'docs/release-acceptance.json'
     & "$PSScriptRoot/check.ps1"
+    if ($LASTEXITCODE -ne 0) { throw '检查失败，未继续打包或提交准备版本。' }
     & "$PSScriptRoot/package.ps1"
+    if ($LASTEXITCODE -ne 0) { throw '打包失败，未提交准备版本。' }
     Invoke-Checked git add Cargo.toml Cargo.lock docs/release-acceptance.json
     Invoke-Checked git commit -m "chore: prepare LightDo $Version for local acceptance"
     Write-Output '准备完成。请测试这份安装包并更新验收记录；验收完成后提交，再运行 -Publish。'
@@ -39,6 +41,7 @@ Invoke-Checked git fetch origin --tags
 & git show-ref --verify --quiet "refs/tags/$tag"
 if ($LASTEXITCODE -eq 0) { throw '该版本标签已存在，禁止改写。' }
 & "$PSScriptRoot/check.ps1"
+if ($LASTEXITCODE -ne 0) { throw '检查失败，未推送或创建正式标签。' }
 Invoke-Checked git push origin main
 Invoke-Checked git tag -a $tag -m "轻待 LightDo $current"
 Invoke-Checked git push origin $tag

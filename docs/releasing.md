@@ -33,10 +33,12 @@
 1. 提交代码后，运行 `scripts/release.ps1 -Prepare -Version 1.0.0`，更新源码/资源版本并检查、打包和提交准备版本。
 2. 对该 EXE 完成本机实际验收，更新 `docs/verification.md` 及 `docs/release-acceptance.json`；只有实际通过的项目才能置为 true。提交最终验收记录后运行 `scripts/finalize-acceptance.ps1`，它会对不含自身的已提交源码清单生成指纹并提交验收门槛。
 3. 运行 `scripts/release.ps1 -Publish`。脚本阻止脏工作区、版本不一致、验收指纹不匹配、未通过项目和重复标签。
-4. 标签触发 Windows Actions：核验门槛、检查、测试、构建、打包、生成许可附件与 SHA-256，全部成功后才创建公开 Release。只有发布任务有 contents:write。
+4. 标签触发 Windows Actions：核验门槛、检查、测试、构建、打包、生成许可附件与 SHA-256；发布任务先创建草稿并上传全部资产，重新下载逐一核对SHA-256后，才改为公开正式Release。只有发布任务有 contents:write。
 5. 下载 Release EXE 对照 SHA-256 并复核安装运行。当前尚未走到正式发布这一步。
 
 已经公开的版本不改写标签；修复源码后提高补丁版本再发布。发布前未通过的构建可直接修复主分支，不能伪造已通过状态。未签名状态需在每次 Release 说明中保留。
+
+上传或草稿下载校验失败会停止公开步骤。确认失败版本仍为草稿、没有公开版本后，可删除该失败草稿（保留原标签）再重跑发布任务；脚本不覆盖已有Release。`publish-release.ps1 -ValidateOnly`仅检查本地六项资产、版本与校验值，不联网或发布。
 
 构建和打包均遵守 CARGO_TARGET_DIR；调试运行的 EXE 被占用时，可在独立构建目录准备候选，不替换正在运行的程序。打包会核对 EXE 资源版本与源码版本，防止误用旧二进制。
 

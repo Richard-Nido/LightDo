@@ -81,6 +81,17 @@ fn main() {
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap(),
             ..Default::default()
         });
+        let fullscreen = std::env::args().any(|arg| arg == "--fullscreen");
+        let area = if fullscreen {
+            lightdo::platform::primary().rcMonitor
+        } else {
+            RECT {
+                left: 60,
+                top: 60,
+                right: 1160,
+                bottom: 980,
+            }
+        };
         let hwnd = CreateWindowExW(
             if std::env::args().any(|arg| arg == "--topmost") {
                 WS_EX_TOPMOST
@@ -89,18 +100,22 @@ fn main() {
             },
             w!("LightDo.TestBackground"),
             w!("LightDo 无隐私玻璃测试背景"),
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            60,
-            60,
-            1100,
-            920,
+            (if fullscreen {
+                WS_POPUP
+            } else {
+                WS_OVERLAPPEDWINDOW
+            }) | WS_VISIBLE,
+            area.left,
+            area.top,
+            area.right - area.left,
+            area.bottom - area.top,
             None,
             None,
             Some(instance.into()),
             None,
         )
         .unwrap();
-        if std::env::args().any(|arg| arg == "--maximized") {
+        if !fullscreen && std::env::args().any(|arg| arg == "--maximized") {
             let _ = ShowWindow(hwnd, SW_SHOWMAXIMIZED);
         }
         if !std::env::args().any(|arg| arg == "--static") {

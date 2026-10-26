@@ -114,6 +114,14 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
     if crate::menu_ui::is_open() && matches!(msg, WM_KEYDOWN | WM_SYSKEYDOWN) {
         return unsafe { DefWindowProcW(hwnd, msg, w, l) };
     }
+    // A normal shutdown request must leave the popup's modal loop before
+    // the application can drain its queued commands and save/exit.
+    if crate::menu_ui::is_open() && (msg == WM_CLOSE || (msg == WM_COMMAND && w.0 & 0xffff == 218))
+    {
+        unsafe {
+            let _ = EndMenu();
+        }
+    }
     match msg {
         WM_SYSKEYDOWN if w.0 == VK_F10.0 as usize => {
             queue(hwnd, WM_KEYDOWN, w, l);
@@ -1272,9 +1280,6 @@ impl App {
                 let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
                 let _ = InvalidateRect(Some(self.input), None, true);
             }
-            if std::mem::take(&mut self.pending_activation) {
-                self.activate_input();
-            }
             self.schedule_tick();
             return;
         }
@@ -1295,6 +1300,13 @@ impl App {
             }
             self.reposition();
             self.dirty = true;
+        }
+        // A fully off-screen HWND cannot reliably take foreground focus.
+        // Keep explicit reveal blocked against auto-hide until the input's
+        // side of the panel has actually entered the work area.
+        if self.visible && self.pending_activation && self.state.progress >= 0.5 {
+            self.pending_activation = false;
+            self.activate_input();
         }
         if self.state.phase == Phase::Hidden
             && !self.visible
@@ -2517,7 +2529,15 @@ unsafe fn run_inner() -> Result<()> {
             if GetMessageW(&mut msg, None, 0, 0).0 <= 0 {
                 break;
             }
-            if !settings_ui::dialog_message(&msg) {
+            let settings_shortcut = matches!(msg.message, WM_KEYDOWN | WM_SYSKEYDOWN)
+                && msg.wParam.0 == VK_F10.0 as usize
+                && GetKeyState(VK_CONTROL.0 as i32) < 0
+                && GetKeyState(VK_MENU.0 as i32) >= 0
+                && !COMPOSING.with(Cell::get)
+                && (msg.hwnd == app.hwnd || GetParent(msg.hwnd).ok() == Some(app.hwnd));
+            if settings_shortcut {
+                app.open_settings();
+            } else if !settings_ui::dialog_message(&msg) {
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             }
