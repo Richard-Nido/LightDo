@@ -429,7 +429,7 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
         let s = GetDpiForWindow(owner) as f32 / 96.0;
         let work = crate::platform::primary().rcWork;
         let hwnd = CreateWindowExW(
-            WS_EX_CONTROLPARENT,
+            WS_EX_CONTROLPARENT | WS_EX_APPWINDOW,
             w!("LightDo.Settings"),
             w!("轻待 · 设置"),
             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_VSCROLL,
@@ -437,7 +437,10 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             work.top + (24.0 * s) as i32,
             (500.0 * s) as i32,
             ((660.0 * s) as i32).min(work.bottom - work.top - 48),
-            Some(owner),
+            // A desktop panel is intentionally below ordinary applications.
+            // Keep settings independent so sinking that panel cannot also
+            // sink this dialog or pull the panel forward when it activates.
+            None,
             None,
             Some(instance.into()),
             None,

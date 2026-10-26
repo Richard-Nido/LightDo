@@ -37,3 +37,5 @@
 Rust1.99.1 MSVC、VS17.14.42、SDK10.0.26100、NSIS3.12，gh位于.tools/gh/bin/gh.exe。构建使用CARGO_TARGET_DIR=工作区/target/candidate，scripts/build.ps1与package.ps1遵守该路径并检查资源版本。不要拿旧root二进制验收最新源码。
 
 正常--shutdown退出LightDo，不强杀。只在得到真实session_id时轮询；不要重启仍活进程代替等待。保留用户数据，清理严格限定工作区内已核对路径。
+
+2026-10-27 设置与模式实测已补齐：透明度/主题、悬浮与置顶、固定展开、锁定、防冲突快捷键、自启登记/清除、恢复默认及含独立设置窗口修正的 Desktop→Edge 回归均有本机证据；注销后自启、Explorer/锁屏/睡眠、卸载主动删除和正式发布仍待。
