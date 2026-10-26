@@ -17,8 +17,11 @@ function Get-ReleaseBinary {
     Join-Path $buildRoot 'x86_64-pc-windows-msvc/release/lightdo.exe'
 }
 function Invoke-Checked {
-    param([Parameter(Mandatory)][string]$Executable, [Parameter(ValueFromRemainingArguments)][string[]]$Arguments)
-    & $Executable @Arguments
+    # Keep this a simple function: advanced-function common parameters would
+    # consume native flags such as cargo -p and git tag -a before invocation.
+    param([string]$Executable)
+    if (!$Executable) { throw '缺少待执行的程序路径。' }
+    & $Executable @args
     if ($LASTEXITCODE -ne 0) {
         $failedCode = $LASTEXITCODE
         [Console]::Error.WriteLine("命令失败，退出码 ${failedCode}：$Executable")
