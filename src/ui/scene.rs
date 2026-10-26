@@ -483,6 +483,7 @@ fn capture(
                 }
                 let Some(frame) = newest else { return Ok(()) };
                 if shared.resting.load(Ordering::Acquire) {
+                    close(Some(frame));
                     return Ok(());
                 }
                 // Wanted, read now, on a thread of its own (see the top); else kept, the thread that draws told once.
@@ -1647,7 +1648,14 @@ impl Scene {
     /// a pixel, and what its frames were read through given back (its pool of frames kept: see `fit`). For whoever
     /// wants what is behind only as it was when last looked at, not as it changes, or is hidden (see `life`);
     /// arranged again, it is as it was, and as quickly.
+    pub fn is_resting(&self) -> bool {
+        self.shared.resting.load(Ordering::Acquire)
+    }
+
     pub fn rest(&mut self) {
+        if self.is_resting() {
+            return;
+        }
         let least = RECT {
             left: self.area.left,
             top: self.area.top,

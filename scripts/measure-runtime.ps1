@@ -3,6 +3,8 @@ param(
     [ValidatePattern('^[a-z0-9-]{1,64}$')][string]$Name = 'runtime',
     [switch]$IncludeGpu,
     [ValidateSet('Any','Hidden','Visible')][string]$ExpectedState = 'Any',
+    [ValidateSet('General','EdgeAutoHidden','TrayHidden','VisibleStatic','VisibleDynamic')][string]$Scenario = 'General',
+    [string]$StateFile,
     [int]$ProcessId = 0
 )
 . "$PSScriptRoot/common.ps1"
@@ -16,6 +18,26 @@ if ($taskProcess.ProcessName -ne 'lightdo') { throw '只测量轻待进程。' }
 $taskLogical = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
 $taskInitial = & $taskProcess.Path --diagnose | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw '读取本应用诊断失败。' }
+function Read-ScenarioSettings {
+    if (!$StateFile) { return $null }
+    $model = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
+    if ($model.version -ne 1 -or $null -eq $model.todos) { throw '场景数据不是当前轻待格式。' }
+    [pscustomobject]@{mode=$model.settings.mode;side=$model.settings.side;autoHide=$model.settings.auto_hide;pinned=$model.settings.pinned}
+}
+function Test-Scenario($diagnostic, $settings) {
+    if ($Scenario -eq 'EdgeAutoHidden') {
+        $runtimeMatches = !$diagnostic.runtime -or (
+            $diagnostic.runtime.phase -eq 'EdgeHidden' -and !$diagnostic.runtime.captureActive -and !$diagnostic.runtime.backgroundReady
+        )
+        return $runtimeMatches -and $diagnostic.panel.visible -eq $false -and $settings.mode -eq 'Edge' -and $settings.autoHide -eq $true -and $settings.pinned -eq $false
+    }
+    if ($Scenario -eq 'TrayHidden') { return $diagnostic.panel.visible -eq $false }
+    if ($Scenario -in 'VisibleStatic','VisibleDynamic') { return $diagnostic.panel.visible -eq $true }
+    return $true
+}
+$initialSettings = Read-ScenarioSettings
+if ($Scenario -eq 'EdgeAutoHidden' -and !$StateFile) { throw '边缘自动隐藏场景必须指定 StateFile，以核对模式和自动收回状态。' }
+if (!(Test-Scenario $taskInitial $initialSettings)) { throw "当前状态不符合 $Scenario，未开始采样。" }
 function Test-ExpectedState($diagnostic) {
     if ($null -eq $diagnostic.panel) { return $false }
     if ($ExpectedState -eq 'Hidden') { return $diagnostic.panel.visible -eq $false }
@@ -30,10 +52,17 @@ $taskGpu = [Collections.Generic.List[double]]::new()
 $taskGpuDedicated = [Collections.Generic.List[double]]::new()
 $taskGpuShared = [Collections.Generic.List[double]]::new()
 $taskGpuError = $null
+$taskWindowSamples = [Collections.Generic.List[bool]]::new()
 function Add-MemorySample {
     $taskProcess.Refresh()
     if ($taskProcess.HasExited) { throw '测试进程已退出，本轮测量无效。' }
     $taskMemory.Add($taskProcess.WorkingSet64)
+    $isVisible = $taskProcess.MainWindowHandle -ne [IntPtr]::Zero
+    $taskWindowSamples.Add(
+        ($ExpectedState -eq 'Any') -or
+        ($ExpectedState -eq 'Visible' -and $isVisible) -or
+        ($ExpectedState -eq 'Hidden' -and !$isVisible)
+    )
 }
 Add-MemorySample
 if ($IncludeGpu) {
@@ -69,10 +98,17 @@ $taskElapsed = $taskWatch.Elapsed.TotalSeconds
 $taskCpu = $taskProcess.TotalProcessorTime.TotalMilliseconds - $taskCpuStart
 $taskFinal = & $taskProcess.Path --diagnose | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw '测量后的本应用诊断失败。' }
+$finalSettings = Read-ScenarioSettings
 $taskResult = [ordered]@{
     name = $Name
+    scenario = $Scenario
+    scenarioMatchedAtBothEnds = ((Test-Scenario $taskInitial $initialSettings) -and (Test-Scenario $taskFinal $finalSettings))
     expectedState = $ExpectedState
     expectedStateMatchedAtBothEnds = ((Test-ExpectedState $taskInitial) -and (Test-ExpectedState $taskFinal))
+    windowStateSamples = $taskWindowSamples.Count
+    unexpectedWindowStateSamples = @($taskWindowSamples | Where-Object { !$_ }).Count
+    initialSettings = $initialSettings
+    finalSettings = $finalSettings
     measuredAt = [DateTimeOffset]::Now.ToString('o')
     seconds = $taskElapsed
     logicalProcessors = $taskLogical

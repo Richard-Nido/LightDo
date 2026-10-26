@@ -16,7 +16,7 @@ use std::{
     collections::VecDeque,
     rc::Rc,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use windows::{
     Win32::{
@@ -52,6 +52,8 @@ const INPUT: usize = 101;
 const INLINE: usize = 102;
 const INPUT_TOP: f32 = 72.0;
 const INPUT_HEIGHT: f32 = 40.0;
+const EDGE_TRIM_AFTER: Duration = Duration::from_secs(5);
+const EDGE_WARMUP_LIMIT: Duration = Duration::from_millis(500);
 fn edit_key(dark: bool) -> COLORREF {
     COLORREF(if dark { 0x030201 } else { 0xfcfdfe })
 }
@@ -165,6 +167,10 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
             LRESULT(0)
         }
         WM_ERASEBKGND => LRESULT(1),
+        WM_NCDESTROY => unsafe {
+            let _ = RemovePropW(hwnd, w!("LightDo.Runtime"));
+            DefWindowProcW(hwnd, msg, w, l)
+        },
         WM_PAINT => {
             unsafe {
                 let mut p = PAINTSTRUCT::default();
@@ -413,11 +419,24 @@ struct App {
     graphic_retry: Option<Instant>,
     session_locked: bool,
     suspended: bool,
+    edge_idle_since: Option<Instant>,
+    runtime_snapshot: Cell<usize>,
+    timer_interval: Cell<Option<u32>>,
+    edge_open_since: Option<Instant>,
+    pending_activation: bool,
+    activation_grace_until: Option<Instant>,
 }
 fn header_rect(width: f32, index: usize) -> D2D_RECT_F {
     gfx::rect(width - 133.0 + 41.0 * index as f32, 17.0, 32.0, 32.0)
 }
 impl App {
+    fn edge_warming(&self) -> bool {
+        self.model.settings.mode == Mode::Edge
+            && self.state.target == 1.0
+            && self.state.progress == 0.0
+            && matches!(self.state.phase, Phase::Opening | Phase::Pinned)
+            && !self.visible
+    }
     fn header_hit(&self, x: f32, y: f32) -> Option<usize> {
         let w = self.size.0 as f32 / self.scale;
         if !self.model.settings.titlebar {
@@ -541,9 +560,16 @@ impl App {
             surface.release(&self.gfx);
         }
     }
-    fn idle_graphics(&mut self) {
-        self.scene = None;
+    fn rest_capture(&mut self) {
+        if let Some(scene) = &mut self.scene {
+            scene.rest();
+        }
         self.background = None;
+    }
+    fn idle_graphics(&mut self) {
+        // Reuse the WGC frame pool: repeatedly creating pools retains driver
+        // allocations even after the application releases their COM objects.
+        self.rest_capture();
         self.lens = None;
         self.release_surface();
         self.gfx.trim_idle();
@@ -706,6 +732,11 @@ impl App {
         unsafe {
             let _ = SetForegroundWindow(self.hwnd);
             let _ = SetFocus(Some(self.input));
+            self.activation_grace_until = if GetForegroundWindow() == self.hwnd {
+                None
+            } else {
+                Some(Instant::now() + Duration::from_millis(1500))
+            };
         }
     }
     fn update_font(&mut self) {
@@ -744,6 +775,20 @@ impl App {
         }
     }
     fn show(&mut self, activate: bool) {
+        self.edge_idle_since = None;
+        if self.model.settings.mode == Mode::Edge && !self.visible {
+            self.minimized = false;
+            self.pending_activation |= activate;
+            self.state.progress = 0.0;
+            self.state.show();
+            self.edge_open_since.get_or_insert_with(Instant::now);
+            self.last_tick = Instant::now();
+            self.reposition();
+            self.schedule_tick();
+            self.arrange_background();
+            self.dirty = true;
+            return;
+        }
         self.visible = true;
         self.minimized = false;
         self.state.show();
@@ -778,6 +823,11 @@ impl App {
     }
     fn hide_tray(&mut self) {
         settings_ui::close();
+        self.state.tray_hide();
+        self.edge_idle_since = None;
+        self.edge_open_since = None;
+        self.pending_activation = false;
+        self.activation_grace_until = None;
         self.visible = false;
         self.idle_graphics();
         self.schedule_tick();
@@ -858,12 +908,15 @@ impl App {
                 .iter()
                 .find(|r| Some(&r.id) == self.editing.as_ref())
             {
+                let edit_y =
+                    ((row.text_top(s) + row.baseline) * s).round() as i32 - self.font_ascent_px;
                 self.place_editor(
                     self.inline,
                     (58.0 * s) as i32,
-                    ((row.text_top(s) + row.baseline) * s).round() as i32 - self.font_ascent_px,
+                    edit_y,
                     (self.size.0 as f32 - 124.0 * s) as i32,
-                    ((row.text_height * s).ceil() as i32).max(self.font_line_px),
+                    (((row.top + row.height - 4.0) * s).floor() as i32 - edit_y)
+                        .max(self.font_line_px),
                 );
             }
         }
@@ -949,7 +1002,7 @@ impl App {
                 let _ = SetFocus(Some(self.hwnd));
             }
             self.state.blocked = false;
-            self.state.hide();
+            self.state.dismiss();
         }
     }
     fn start_edit(&mut self, id: String) {
@@ -1004,9 +1057,9 @@ impl App {
             }
         }
         self.model.settings.mode = mode;
+        self.edge_idle_since = None;
         self.state.mode(mode);
-        self.scene = None;
-        self.background = None;
+        self.rest_capture();
         self.visible = true;
         self.last_tick = Instant::now();
         self.schedule_tick();
@@ -1048,7 +1101,8 @@ impl App {
             } else {
                 work.left - w - 8
             };
-            let p = 1.0 - (1.0 - self.state.progress).powi(3);
+            let t = self.state.progress;
+            let p = t * t * (3.0 - 2.0 * t);
             (
                 (hidden as f32 + (shown - hidden) as f32 * p) as i32,
                 work.top + ((work.bottom - work.top - h) / 2).max(12),
@@ -1071,18 +1125,46 @@ impl App {
     }
     fn schedule_tick(&self) {
         unsafe {
-            match self.state.timer_interval(
+            let mode = match self.model.settings.mode {
+                Mode::Edge => 1,
+                Mode::Floating => 2,
+                Mode::Desktop => 3,
+            };
+            let snapshot = 0x100
+                | mode
+                | ((self.state.phase as usize) << 2)
+                | (usize::from(self.scene.as_ref().is_some_and(|s| !s.is_resting())) << 6)
+                | (usize::from(self.background.is_some()) << 7)
+                | (usize::from(self.scene.is_some()) << 9);
+            if self.runtime_snapshot.get() != snapshot
+                && SetPropW(
+                    self.hwnd,
+                    w!("LightDo.Runtime"),
+                    Some(HANDLE(snapshot as *mut _)),
+                )
+                .is_ok()
+            {
+                self.runtime_snapshot.set(snapshot);
+            }
+            let interval = self.state.timer_interval(
                 self.visible,
                 self.session_locked || self.suspended,
                 self.minimized,
-            ) {
+            );
+            if self.timer_interval.get() == interval {
+                return;
+            }
+            match interval {
                 Some(interval) => {
-                    SetTimer(Some(self.controller), 1, interval, None);
+                    if SetTimer(Some(self.controller), 1, interval, None) == 0 {
+                        return;
+                    }
                 }
                 None => {
                     let _ = KillTimer(Some(self.controller), 1);
                 }
             }
+            self.timer_interval.set(interval);
         }
     }
     fn tick(&mut self) {
@@ -1099,62 +1181,113 @@ impl App {
             return;
         }
         let now = Instant::now();
+        self.activation_grace_until = self.activation_grace_until.filter(|until| now < *until);
         let elapsed = now.duration_since(self.last_tick).as_secs_f32() * 1000.0;
         self.last_tick = now;
         let mut p = POINT::default();
-        unsafe {
-            let _ = GetCursorPos(&mut p);
-        }
-        let mut r = RECT::default();
-        unsafe {
-            let _ = GetWindowRect(self.hwnd, &mut r);
-        }
-        let inside =
-            p.x >= r.left - 8 && p.x < r.right + 8 && p.y >= r.top - 8 && p.y < r.bottom + 8;
-        let cfg = &self.model.settings;
-        self.state.pinned = cfg.pinned && cfg.mode == Mode::Edge;
-        let active = unsafe { GetForegroundWindow() } == self.hwnd;
-        self.state.blocked = self.in_menu
-            || settings_ui::is_open()
-            || self.moving
-            || COMPOSING.with(Cell::get)
-            || (active && unsafe { GetFocus() } == self.input)
-            || (active && !self.inline.is_invalid() && unsafe { GetFocus() } == self.inline);
-        let primary = platform::primary().rcMonitor;
-        let at = if cfg.side == Side::Right {
-            (p.x - primary.right).abs() <= 2
-        } else {
-            (p.x - primary.left).abs() <= 2
-        };
-        let edge = at
-            && p.y > primary.top + 48
-            && p.y < primary.bottom - 48
-            && (!cfg.fullscreen_pause || !platform::fullscreen_other(self.hwnd));
-        if self.visible || self.state.phase == Phase::Hidden {
-            self.state.pointer(
-                self.start.elapsed().as_millis() as u64,
-                inside,
-                edge,
-                cfg.dwell_ms,
-                cfg.hide_ms,
-                cfg.auto_hide && (cfg.introduced || self.start.elapsed().as_secs() >= 12),
-            );
-        }
-        if !self.model.settings.introduced && self.start.elapsed().as_secs() >= 12 {
-            self.model.settings.introduced = true;
-            self.save();
+        let previous_target = self.state.target;
+        {
+            unsafe {
+                let _ = GetCursorPos(&mut p);
+            }
+            let mut r = RECT::default();
+            unsafe {
+                let _ = GetWindowRect(self.hwnd, &mut r);
+            }
+            let inside =
+                p.x >= r.left - 8 && p.x < r.right + 8 && p.y >= r.top - 8 && p.y < r.bottom + 8;
+            let cfg = &self.model.settings;
+            self.state.pinned = cfg.pinned && cfg.mode == Mode::Edge;
+            let active = unsafe { GetForegroundWindow() } == self.hwnd;
+            self.state.blocked = self.in_menu
+                || self.pending_activation
+                || self.activation_grace_until.is_some()
+                || settings_ui::is_open()
+                || self.moving
+                || COMPOSING.with(Cell::get)
+                || (active && unsafe { GetFocus() } == self.input)
+                || (active && !self.inline.is_invalid() && unsafe { GetFocus() } == self.inline);
+            let primary = platform::primary().rcMonitor;
+            let at = if cfg.side == Side::Right {
+                (p.x - primary.right).abs() <= 2
+            } else {
+                (p.x - primary.left).abs() <= 2
+            };
+            let edge = at
+                && p.y > primary.top + 48
+                && p.y < primary.bottom - 48
+                && (!cfg.fullscreen_pause || !platform::fullscreen_other(self.hwnd));
+            if self.visible || self.state.phase == Phase::Hidden || self.edge_warming() {
+                self.state.pointer(
+                    self.start.elapsed().as_millis() as u64,
+                    inside,
+                    edge,
+                    cfg.dwell_ms,
+                    cfg.hide_ms,
+                    cfg.auto_hide && (cfg.introduced || self.start.elapsed().as_secs() >= 12),
+                );
+            }
+            if !self.model.settings.introduced && self.start.elapsed().as_secs() >= 12 {
+                self.model.settings.introduced = true;
+                self.save();
+            }
         }
         let mut animation = BOOL(1);
-        unsafe {
-            let _ = SystemParametersInfoW(
-                SPI_GETCLIENTAREAANIMATION,
-                0,
-                Some(&mut animation as *mut _ as *mut _),
-                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-            );
+        if (self.state.progress - self.state.target).abs() > 0.001 {
+            unsafe {
+                let _ = SystemParametersInfoW(
+                    SPI_GETCLIENTAREAANIMATION,
+                    0,
+                    Some(&mut animation as *mut _ as *mut _),
+                    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+                );
+            }
         }
-        if self.state.step(elapsed, !animation.as_bool()) {
+        if self.edge_warming() {
+            self.arrange_background();
+            let since = *self.edge_open_since.get_or_insert(now);
+            if self.material.glass()
+                && self.background.is_none()
+                && now.duration_since(since) < EDGE_WARMUP_LIMIT
+            {
+                self.schedule_tick();
+                return;
+            }
+            // Build the first complete surface while the panel is naturally
+            // hidden. Showing it never exposes an unpainted/old surface.
+            self.reposition();
+            if let Err(error) = self.draw() {
+                self.recover_graphics(error);
+                self.schedule_tick();
+                return;
+            }
+            unsafe {
+                let _ = self.gfx.dcomp.WaitForCommitCompletion();
+            }
+            self.visible = true;
+            self.edge_idle_since = None;
+            self.edge_open_since = None;
+            self.last_tick = Instant::now();
+            unsafe {
+                let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+                let _ = InvalidateRect(Some(self.input), None, true);
+            }
+            if std::mem::take(&mut self.pending_activation) {
+                self.activate_input();
+            }
+            self.schedule_tick();
+            return;
+        }
+        let frame_elapsed = if self.state.target != previous_target {
+            0.0
+        } else {
+            // Preserve wall-clock duration under a missed frame; only a long
+            // stall is clamped so reopening never jumps from hidden to done.
+            elapsed.min(64.0)
+        };
+        if self.state.step(frame_elapsed, !animation.as_bool()) {
             if !self.visible && self.state.target == 1.0 {
+                self.edge_idle_since = None;
                 self.visible = true;
                 unsafe {
                     let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
@@ -1163,14 +1296,32 @@ impl App {
             self.reposition();
             self.dirty = true;
         }
+        if self.state.phase == Phase::Hidden
+            && !self.visible
+            && self.edge_open_since.take().is_some()
+        {
+            self.pending_activation = false;
+            self.idle_graphics();
+        }
         if self.state.phase == Phase::Hidden && self.visible {
             self.visible = false;
             unsafe {
                 let _ = ShowWindow(self.hwnd, SW_HIDE);
             }
-            self.scene = None;
-            self.background = None;
+            self.rest_capture();
             self.release_surface();
+            self.edge_idle_since = Some(now);
+        }
+        // Keep the displacement map for a quick return. Reclaim the remaining
+        // renderer/driver caches only after a genuine idle interval.
+        if self.state.phase == Phase::Hidden
+            && !self.visible
+            && self
+                .edge_idle_since
+                .is_some_and(|since| now.duration_since(since) >= EDGE_TRIM_AFTER)
+        {
+            self.idle_graphics();
+            self.edge_idle_since = None;
         }
         unsafe {
             if let Some(host) = self.desktop {
@@ -1194,26 +1345,42 @@ impl App {
         self.schedule_tick();
     }
     fn arrange_background(&mut self) {
-        if !self.visible
+        if (!self.visible && !self.edge_warming())
             || !self.material.glass()
             || self.session_locked
             || self.suspended
             || self.minimized
         {
-            self.scene = None;
-            self.background = None;
+            self.rest_capture();
             return;
         }
         let mut r = RECT::default();
         unsafe {
             let _ = GetWindowRect(self.hwnd, &mut r);
         }
-        let area = RECT {
+        let mut area = RECT {
             left: r.left - 16,
             top: r.top - 16,
             right: r.right + 16,
             bottom: r.bottom + 16,
         };
+        if self.model.settings.mode == Mode::Edge {
+            let work = platform::primary().rcWork;
+            let width = (r.right - r.left).max(1);
+            let height = (r.bottom - r.top).max(1);
+            let left = if self.model.settings.side == Side::Right {
+                work.right - width - 12
+            } else {
+                work.left + 12
+            };
+            let top = work.top + ((work.bottom - work.top - height) / 2).max(12);
+            area = RECT {
+                left: left - 16,
+                top: top - 16,
+                right: left + width + 16,
+                bottom: top + height + 16,
+            };
+        }
         if self.scene.is_none() {
             let hwnd = self.hwnd.0 as usize;
             self.scene = Scene::new(
@@ -1245,7 +1412,11 @@ impl App {
         }
     }
     fn draw(&mut self) -> Result<()> {
-        if !self.visible || self.session_locked || self.suspended || self.minimized {
+        if (!self.visible && !self.edge_warming())
+            || self.session_locked
+            || self.suspended
+            || self.minimized
+        {
             return Ok(());
         }
         let s = self.scale;
@@ -1273,6 +1444,7 @@ impl App {
                     LWA_ALPHA | LWA_COLORKEY,
                 );
                 let _ = InvalidateRect(Some(self.input), None, true);
+                let _ = UpdateWindow(self.input);
                 if !self.inline.is_invalid() {
                     let _ = SetLayeredWindowAttributes(
                         self.inline,
@@ -1281,6 +1453,7 @@ impl App {
                         LWA_ALPHA | LWA_COLORKEY,
                     );
                     let _ = InvalidateRect(Some(self.inline), None, true);
+                    let _ = UpdateWindow(self.inline);
                 }
             }
         }
@@ -1935,25 +2108,22 @@ impl App {
                 SCALE.with(|s| s.set(self.scale));
                 self.update_font();
                 self.lens = None;
-                self.background = None;
-                self.scene = None;
+                self.rest_capture();
                 self.reposition();
                 self.dirty = true;
             }
             WM_DISPLAYCHANGE => {
-                self.scene = None;
-                self.background = None;
+                self.rest_capture();
                 self.reposition();
             }
             WM_SETTINGCHANGE => {
                 self.material = Material::detect(self.gfx.software);
-                self.scene = None;
-                self.background = None;
+                self.rest_capture();
                 self.dirty = true;
             }
             WM_HOTKEY => {
                 if self.visible && !self.state.blocked && self.model.settings.mode == Mode::Edge {
-                    self.state.hide()
+                    self.state.dismiss()
                 } else {
                     self.show(true)
                 }
@@ -2141,6 +2311,11 @@ unsafe fn run_inner() -> Result<()> {
         if GetLastError() == ERROR_ALREADY_EXISTS {
             if let Ok(hwnd) = FindWindowW(w!("LightDo.Controller"), None) {
                 let shutdown = std::env::args().any(|arg| arg == "--shutdown");
+                if !shutdown {
+                    let mut process_id = 0;
+                    GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+                    let _ = AllowSetForegroundWindow(process_id);
+                }
                 let _ = PostMessageW(
                     Some(hwnd),
                     if shutdown { WM_COMMAND } else { SHOW_REQUEST },
@@ -2278,6 +2453,12 @@ unsafe fn run_inner() -> Result<()> {
                 .as_bool()
                 .unwrap_or(false),
             suspended: false,
+            edge_idle_since: None,
+            runtime_snapshot: Cell::new(0),
+            timer_interval: Cell::new(None),
+            edge_open_since: None,
+            pending_activation: false,
+            activation_grace_until: None,
         };
         app.input = app.editor(INPUT)?;
         SendMessageW(
@@ -2300,7 +2481,29 @@ unsafe fn run_inner() -> Result<()> {
         }
         SetTimer(Some(controller), 1, 80, None);
         let _ = WTSRegisterSessionNotification(controller, NOTIFY_FOR_THIS_SESSION);
-        app.show(false);
+        if initial_mode == Mode::Edge
+            && app.model.settings.introduced
+            && app.model.settings.auto_hide
+            && !app.model.settings.pinned
+        {
+            app.state.hide();
+            app.state.step(220.0, true);
+            app.visible = false;
+            app.edge_idle_since = Some(Instant::now());
+            let _ = SetWindowPos(
+                app.hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+            app.reposition();
+            app.schedule_tick();
+        } else {
+            app.show(false);
+        }
         if !app.store.writable {
             let _ = EnableWindow(app.input, false);
             app.message("无法读取轻待的数据文件。原文件保持不变，当前已禁止修改和覆盖保存。请检查 %APPDATA%\\LightDo\\state.json 后重启。可以从托盘正常退出。");

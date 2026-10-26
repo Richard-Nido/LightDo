@@ -200,6 +200,13 @@ pub fn fullscreen_other(hwnd: HWND) -> bool {
         if front == hwnd || front.is_invalid() {
             return false;
         }
+        // A regular maximized window can cover the monitor when the taskbar
+        // auto-hides. Its caption/maximized state distinguishes it from a
+        // borderless fullscreen surface.
+        let style = GetWindowLongPtrW(front, GWL_STYLE) as u32;
+        if IsZoomed(front).as_bool() && style & WS_CAPTION.0 == WS_CAPTION.0 {
+            return false;
+        }
         let mut r = RECT::default();
         if GetWindowRect(front, &mut r).is_err() {
             return false;

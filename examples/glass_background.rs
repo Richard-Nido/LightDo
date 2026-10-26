@@ -15,9 +15,14 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
         match msg {
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
-                let dc = BeginPaint(hwnd, &mut ps);
+                let target = BeginPaint(hwnd, &mut ps);
                 let mut r = RECT::default();
                 let _ = GetClientRect(hwnd, &mut r);
+                // Present a complete test frame. Directly painting the moving
+                // grid exposes intermediate solid/partial frames to WGC.
+                let dc = CreateCompatibleDC(Some(target));
+                let bitmap = CreateCompatibleBitmap(target, r.right.max(1), r.bottom.max(1));
+                let previous = SelectObject(dc, bitmap.into());
                 let base = CreateSolidBrush(COLORREF(0xf5f0e8));
                 FillRect(dc, &r, base);
                 let _ = DeleteObject(base.into());
@@ -46,6 +51,10 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
                     .encode_utf16()
                     .collect();
                 let _ = TextOutW(dc, 36, 36, &text);
+                let _ = BitBlt(target, 0, 0, r.right, r.bottom, Some(dc), 0, 0, SRCCOPY);
+                SelectObject(dc, previous);
+                let _ = DeleteObject(bitmap.into());
+                let _ = DeleteDC(dc);
                 let _ = EndPaint(hwnd, &ps);
                 LRESULT(0)
             }

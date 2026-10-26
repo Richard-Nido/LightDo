@@ -9,6 +9,7 @@ pub enum Phase {
     Moving,
     Floating,
     Desktop,
+    TrayHidden,
 }
 pub struct WindowState {
     pub phase: Phase,
@@ -19,6 +20,7 @@ pub struct WindowState {
     pub pinned: bool,
     pub away_since: Option<u64>,
     pub edge_since: Option<u64>,
+    edge_dismissed: bool,
 }
 impl Default for WindowState {
     fn default() -> Self {
@@ -31,12 +33,17 @@ impl Default for WindowState {
             pinned: false,
             away_since: None,
             edge_since: None,
+            edge_dismissed: false,
         }
     }
 }
 impl WindowState {
     pub fn timer_interval(&self, visible: bool, paused: bool, minimized: bool) -> Option<u32> {
-        if paused || minimized || (!visible && self.phase != Phase::Hidden) {
+        if paused
+            || minimized
+            || self.phase == Phase::TrayHidden
+            || (!visible && !matches!(self.phase, Phase::Hidden | Phase::Opening | Phase::Pinned))
+        {
             None
         } else if (self.progress - self.target).abs() > 0.001 {
             Some(16)
@@ -44,7 +51,14 @@ impl WindowState {
             Some(80)
         }
     }
+    pub fn tray_hide(&mut self) {
+        self.phase = Phase::TrayHidden;
+        self.target = self.progress;
+        self.away_since = None;
+        self.edge_since = None;
+    }
     pub fn show(&mut self) {
+        self.edge_dismissed = false;
         self.target = 1.0;
         self.phase = match self.mode {
             Mode::Floating => Phase::Floating,
@@ -60,9 +74,20 @@ impl WindowState {
         self.away_since = None;
     }
     pub fn hide(&mut self) {
-        if !self.blocked && !self.pinned && self.mode == Mode::Edge {
+        if !self.blocked
+            && !self.pinned
+            && self.mode == Mode::Edge
+            && self.phase != Phase::TrayHidden
+        {
             self.target = 0.0;
             self.phase = Phase::Closing;
+        }
+    }
+    pub fn dismiss(&mut self) {
+        self.hide();
+        if self.mode == Mode::Edge && self.target == 0.0 {
+            self.edge_dismissed = true;
+            self.edge_since = None;
         }
     }
     pub fn mode(&mut self, mode: Mode) {
@@ -76,8 +101,12 @@ impl WindowState {
         };
         self.away_since = None;
         self.edge_since = None;
+        self.edge_dismissed = false;
     }
     pub fn step(&mut self, elapsed_ms: f32, reduced: bool) -> bool {
+        if self.phase == Phase::TrayHidden {
+            return false;
+        }
         let previous = self.progress;
         if reduced {
             self.progress = self.target
@@ -109,9 +138,13 @@ impl WindowState {
         delay: u64,
         auto_hide: bool,
     ) {
-        if self.mode != Mode::Edge {
+        if self.mode != Mode::Edge || self.phase == Phase::TrayHidden {
             return;
         }
+        if !at_edge {
+            self.edge_dismissed = false;
+        }
+        let at_edge = at_edge && !self.edge_dismissed;
         if at_edge && self.target == 0.0 {
             let since = *self.edge_since.get_or_insert(now);
             if now.saturating_sub(since) >= dwell {
@@ -121,7 +154,7 @@ impl WindowState {
         } else if !at_edge {
             self.edge_since = None;
         }
-        if inside || self.blocked || self.pinned || !auto_hide {
+        if inside || at_edge || self.blocked || self.pinned || !auto_hide {
             self.away_since = None;
             if self.target == 0.0
                 && (self.progress > 0.0 || self.blocked || self.pinned || !auto_hide)
@@ -205,5 +238,59 @@ mod tests {
         s.mode(Mode::Floating);
         assert_eq!(s.timer_interval(false, false, false), None);
         assert_eq!(s.timer_interval(true, false, false), Some(80));
+    }
+    #[test]
+    fn explicit_tray_hide_disarms_edge_wakeup_until_shown() {
+        let mut s = WindowState::default();
+        s.hide();
+        s.step(220.0, false);
+        assert_eq!(s.phase, Phase::Hidden);
+        s.tray_hide();
+        s.pointer(1000, false, true, 250, 400, true);
+        s.pointer(2000, false, true, 250, 400, true);
+        assert!(!s.step(1000.0, false));
+        assert_eq!(s.phase, Phase::TrayHidden);
+        assert_eq!(s.timer_interval(false, false, false), None);
+        s.show();
+        s.step(220.0, false);
+        assert_eq!(s.phase, Phase::Expanded);
+        assert_eq!(s.target, 1.0);
+    }
+    #[test]
+    fn edge_trigger_strip_keeps_the_open_panel_from_repeatedly_closing() {
+        let mut s = WindowState::default();
+        s.hide();
+        s.step(220.0, false);
+        s.pointer(0, false, true, 250, 400, true);
+        s.pointer(250, false, true, 250, 400, true);
+        assert_eq!(s.phase, Phase::Opening);
+        assert_eq!(s.timer_interval(false, false, false), Some(16));
+        s.step(220.0, false);
+        for now in [500, 1000, 2000] {
+            s.pointer(now, false, true, 250, 400, true);
+            assert_eq!(s.target, 1.0);
+            assert!(s.away_since.is_none());
+        }
+        s.pointer(3000, false, false, 250, 400, true);
+        s.pointer(3400, false, false, 250, 400, true);
+        assert_eq!(s.target, 0.0);
+        s.pinned = true;
+        s.progress = 0.0;
+        s.show();
+        assert_eq!(s.timer_interval(false, false, false), Some(16));
+    }
+    #[test]
+    fn explicit_dismiss_waits_for_pointer_to_leave_and_reenter_the_edge() {
+        let mut s = WindowState::default();
+        s.dismiss();
+        s.step(220.0, false);
+        for now in [500, 1000, 2000] {
+            s.pointer(now, false, true, 250, 400, true);
+            assert_eq!(s.target, 0.0);
+        }
+        s.pointer(2100, false, false, 250, 400, true);
+        s.pointer(2200, false, true, 250, 400, true);
+        s.pointer(2450, false, true, 250, 400, true);
+        assert_eq!(s.target, 1.0);
     }
 }

@@ -22,5 +22,6 @@ fn main() {
                     | windows::Win32::UI::WindowsAndMessaging::MB_ICONERROR,
             );
         }
+        std::process::exit(1);
     }
 }
