@@ -1,7 +1,7 @@
 {
-  "status": "pending",
+  "status": "passed",
   "version": "1.0.0",
-  "sourceFingerprint": null,
+  "sourceFingerprint": "41947b11ee69a15e51d359b9f51bdd79f02980128545d0a97f1e8249a9b2955d",
   "glass": true,
   "windowModes": true,
   "chineseIme": true,
