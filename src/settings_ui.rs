@@ -46,6 +46,29 @@ pub fn take() -> Option<Settings> {
 pub fn is_open() -> bool {
     UI.with(|u| u.borrow().is_some())
 }
+pub fn sync_layer() {
+    let windows = UI.with(|u| u.borrow().as_ref().map(|ui| (ui.hwnd, ui.owner)));
+    if let Some((hwnd, panel)) = windows {
+        unsafe {
+            // Settings remains independent of the desktop host, but must be
+            // above a topmost edge/floating panel when their bounds overlap.
+            let topmost = GetWindowLongPtrW(panel, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 != 0;
+            let _ = SetWindowPos(
+                hwnd,
+                Some(if topmost {
+                    HWND_TOPMOST
+                } else {
+                    HWND_NOTOPMOST
+                }),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
 pub fn close() {
     let old = UI.with(|u| u.borrow_mut().take());
     if let Some(ui) = old {
@@ -413,6 +436,7 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
 pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
     unsafe {
         if let Some(hwnd) = UI.with(|u| u.borrow().as_ref().map(|ui| ui.hwnd)) {
+            sync_layer();
             let _ = SetForegroundWindow(hwnd);
             return Ok(());
         }
@@ -767,6 +791,7 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
         populate(&ui);
         show_page(&ui, 0);
         UI.with(|u| *u.borrow_mut() = Some(ui));
+        sync_layer();
         let _ = ShowWindow(hwnd, SW_SHOW);
         let _ = SetForegroundWindow(hwnd);
         Ok(())

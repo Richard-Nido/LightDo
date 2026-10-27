@@ -480,10 +480,16 @@ impl App {
             return false;
         };
         let mut r = RECT::default();
-        let mut p = POINT::default();
+        // Mouse messages are queued for the regular application loop. The
+        // cursor may already have moved when that loop consumes mouse-down;
+        // derive its origin from the message instead of sampling it later.
+        let mut p = POINT {
+            x: (x * self.scale).round() as i32,
+            y: (y * self.scale).round() as i32,
+        };
         unsafe {
             let _ = GetWindowRect(self.hwnd, &mut r);
-            let _ = GetCursorPos(&mut p);
+            let _ = ClientToScreen(self.hwnd, &mut p);
         }
         self.model.settings.x = r.left;
         self.model.settings.y = r.top;
@@ -724,6 +730,7 @@ impl App {
             }
         }
         self.reposition();
+        settings_ui::sync_layer();
         self.save();
     }
     fn message(&self, text: &str) {
@@ -1090,6 +1097,7 @@ impl App {
             let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
         }
         self.reposition();
+        settings_ui::sync_layer();
         self.save();
     }
     fn reposition(&mut self) {
@@ -1911,6 +1919,7 @@ impl App {
             }
             _ => {}
         }
+        settings_ui::sync_layer();
         self.save();
     }
     fn event(&mut self, e: Event) {
