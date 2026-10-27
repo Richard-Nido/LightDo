@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "sourceFingerprint": null,
   "glass": true,
-  "windowModes": false,
+  "windowModes": true,
   "chineseIme": true,
   "installer": true,
   "evidence": "docs/verification.md",
-  "note": "既有核心验收见verification.md。用户新增可配置停靠范围，窗口项需完成本次新构建实测后重新确认；正式发布继续保持pending。"
+  "note": "本机四项核心验收通过，含新增可配置停靠范围。真实范围见verification.md；生成源码指纹后才可推正式标签，公开Release下载和最终清理随后另行记录。"
 }
