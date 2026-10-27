@@ -26,6 +26,11 @@ function Stop-Normally {
 }
 Stop-Normally
 $baselineHash = (Get-FileHash -LiteralPath $statePath).Hash
+$baselineContent = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json | ConvertTo-Json -Depth 16 -Compress
+function Assert-StateContent {
+    $currentContent = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json | ConvertTo-Json -Depth 16 -Compress
+    if ($currentContent -ne $baselineContent) { throw '正常退出改变了任务或设置内容；停止并保留现场。' }
+}
 for ($cycle=1; $cycle -le $Cycles; $cycle++) {
     # Cold starts from a different working directory must read the same folder.
     $startupWatch = [Diagnostics.Stopwatch]::StartNew()
@@ -44,9 +49,9 @@ for ($cycle=1; $cycle -le $Cycles; $cycle++) {
     $records += [pscustomobject]@{cycle=$cycle;pid=$process.Id;tasks=$diagnostic.data.tasks;unfinished=$diagnostic.data.unfinished;readable=$diagnostic.data.readable;dataAndInputReadyMilliseconds=$startupWatch.Elapsed.TotalMilliseconds}
     if ($cycle -lt $Cycles) {
         Stop-Normally
-        if ((Get-FileHash -LiteralPath $statePath).Hash -ne $baselineHash) { throw '正常退出改变了原始状态文件；停止并保留现场。' }
+        Assert-StateContent
     }
 }
-if ((Get-FileHash -LiteralPath $statePath).Hash -ne $baselineHash) { throw '重启后状态文件不一致；保留现场。' }
-$result = [ordered]@{binarySha256=(Get-FileHash $Executable).Hash.ToLowerInvariant();cycles=$Cycles;separateProcesses=$records;startupTiming='Includes process launch, 200ms polling and diagnostic subprocess; data and native input created, not first visible glass frame';foreignWorkingDirectory=$true;stateHashUnchanged=$true;taskTextLogged=$false;guiObserved=$false}
+Assert-StateContent
+$result = [ordered]@{binarySha256=(Get-FileHash $Executable).Hash.ToLowerInvariant();cycles=$Cycles;separateProcesses=$records;startupTiming='Includes process launch, 200ms polling and diagnostic subprocess; data and native input created, not first visible glass frame';foreignWorkingDirectory=$true;stateContentUnchanged=$true;stateHashUnchanged=((Get-FileHash -LiteralPath $statePath).Hash -eq $baselineHash);formattingNote='Full parsed JSON content must remain equal; whitespace formatting is reported separately';taskTextLogged=$false;guiObserved=$false}
 $result | ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $script:ProjectRoot 'local-evidence/restart-retention.json')
