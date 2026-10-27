@@ -12,6 +12,8 @@
 
 隔离开发数据位于 `local-evidence/dev-data`，不会写入正式用户目录。
 
+当前用户的实际重启保留可用`scripts/test-restart.ps1 -Executable "$env:LOCALAPPDATA/Programs/LightDo/lightdo.exe" -Cycles 3`检查。它需要现有非空清单，只正常退出、从不同工作目录启动并核对数量与文件SHA，不创建或删除任务；有其他实例、退出失败或数量不符时停止保留现场。必须在没有正在编辑任务时运行；它不替代实际界面观察。
+
 运行 `cargo run --release --example glass_background` 打开本项目的动态无隐私测试窗口。它是测试工具，不随应用安装，不作为应用内置背景，也不会在正式运行时启动。
 
 发布者为 Yuan Haoran (Richard-Nido)，无代码签名证书。发布时应如实说明安装包未签名以及 Windows 可能显示发布者验证或 SmartScreen 提示；不得要求用户关闭安全防护。

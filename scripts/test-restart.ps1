@@ -1,0 +1,51 @@
+param(
+    [Parameter(Mandatory)][string]$Executable,
+    [ValidateRange(2,10)][int]$Cycles = 3
+)
+. "$PSScriptRoot/common.ps1"
+$Executable = (Resolve-Path -LiteralPath $Executable).Path
+if ([IO.Path]::GetFileName($Executable) -ne 'lightdo.exe') { throw '仅验收轻待应用。' }
+if ($env:LIGHTDO_DATA_DIR) { throw '请先移除开发数据目录覆盖，避免把隔离数据当正式数据。' }
+$statePath = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'LightDo/state.json'
+$model = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+if ($model.version -ne 1 -or !$model.todos.Count) { throw '需要现有非空轻待清单，未修改文件。' }
+$expectedTasks = $model.todos.Count
+$expectedUnfinished = @($model.todos | Where-Object { !$_.done }).Count
+$records = @()
+function Stop-Normally {
+    $running = @(Get-Process lightdo -ErrorAction SilentlyContinue)
+    if ($running.Count -gt 1 -or ($running.Count -eq 1 -and $running[0].Path -ne $Executable)) {
+        throw '有其他轻待实例，未操作。'
+    }
+    if (!$running.Count) { return }
+    $shutdown = Start-Process -FilePath $Executable -ArgumentList '--shutdown' -WindowStyle Hidden -Wait -PassThru
+    if ($shutdown.ExitCode -ne 0) { throw '正常退出请求失败。' }
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Process -Id $running[0].Id -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    if (Get-Process -Id $running[0].Id -ErrorAction SilentlyContinue) { throw '未正常退出；不强杀，不继续。' }
+}
+Stop-Normally
+$baselineHash = (Get-FileHash -LiteralPath $statePath).Hash
+for ($cycle=1; $cycle -le $Cycles; $cycle++) {
+    # Cold starts from a different working directory must read the same folder.
+    $process = Start-Process -FilePath $Executable -WorkingDirectory ([IO.Path]::GetTempPath()) -PassThru
+    $deadline = (Get-Date).AddSeconds(12)
+    $diagnostic = $null
+    do {
+        Start-Sleep -Milliseconds 200
+        if ($process.HasExited) { throw "第${cycle}次启动提前退出。" }
+        $diagnostic = & $Executable --diagnose | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw '诊断进程失败，停止采样。' }
+    } until ($null -ne $diagnostic.data -or (Get-Date) -ge $deadline)
+    if ($diagnostic.data.readable -ne $true -or $diagnostic.data.tasks -ne $expectedTasks -or $diagnostic.data.unfinished -ne $expectedUnfinished) {
+        throw "第${cycle}次读取结果不符；保留现场，不覆盖任务文件。"
+    }
+    $records += [pscustomobject]@{cycle=$cycle;pid=$process.Id;tasks=$diagnostic.data.tasks;unfinished=$diagnostic.data.unfinished;readable=$diagnostic.data.readable}
+    if ($cycle -lt $Cycles) {
+        Stop-Normally
+        if ((Get-FileHash -LiteralPath $statePath).Hash -ne $baselineHash) { throw '正常退出改变了原始状态文件；停止并保留现场。' }
+    }
+}
+if ((Get-FileHash -LiteralPath $statePath).Hash -ne $baselineHash) { throw '重启后状态文件不一致；保留现场。' }
+$result = [ordered]@{binarySha256=(Get-FileHash $Executable).Hash.ToLowerInvariant();cycles=$Cycles;separateProcesses=$records;foreignWorkingDirectory=$true;stateHashUnchanged=$true;taskTextLogged=$false;guiObserved=$false}
+$result | ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $script:ProjectRoot 'local-evidence/restart-retention.json')

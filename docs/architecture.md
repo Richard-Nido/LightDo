@@ -24,6 +24,8 @@ Glance 的 glass.rs 是系统 HostBackdrop 毛玻璃；skins.rs 的 Glass 才使
 
 数据路径 `%APPDATA%\LightDo\state.json`；版本化 JSON，串行同步落盘、临时文件 flush 后原子替换。读取失败保持原文件且禁写，不用空数据覆盖。按用户后续要求，不提供 QuietDo 或其他应用的数据导入，见 product-decisions.md。
 
+默认数据根使用Windows Known Folder API取得，避免启动工作目录或缺失APPDATA环境变量导致另建空清单；开发LIGHTDO_DATA_DIR只接受绝对路径。短暂共享/锁冲突最多重试500ms，不对格式错误反复轮询。设置通用页可打开实际数据文件夹；诊断只提供已加载数量和可读状态，便于区分未读取与空清单，不包含任务正文或私密路径。
+
 当前最低实际测试系统是本机 Windows 11 26H2 build 26300.9711 x64；注册表 ProductName 仍称 Windows 10，不能据此误判系统版本。其他 Windows 11 构建尚未验证。
 
 ## 桌面层级方案的实验与修正

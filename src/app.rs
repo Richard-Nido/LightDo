@@ -646,7 +646,31 @@ impl App {
             }
             self.error = Some(e)
         }
+        self.update_data_status();
         self.dirty = true;
+    }
+    fn update_data_status(&self) {
+        unsafe {
+            let _ = SetPropW(
+                self.hwnd,
+                w!("LightDo.TaskCount"),
+                Some(HANDLE((self.model.todos.len() + 1) as *mut _)),
+            );
+            let _ = SetPropW(
+                self.hwnd,
+                w!("LightDo.UnfinishedCount"),
+                Some(HANDLE(
+                    (self.model.todos.iter().filter(|todo| !todo.done).count() + 1) as *mut _,
+                )),
+            );
+            let _ = SetPropW(
+                self.hwnd,
+                w!("LightDo.DataReadable"),
+                Some(HANDLE(
+                    (if self.store.writable { 2usize } else { 1usize }) as *mut _,
+                )),
+            );
+        }
     }
     fn open_settings(&mut self) {
         let diagnostic = format!(
@@ -665,7 +689,12 @@ impl App {
             }
         );
         self.show(false);
-        if let Err(e) = settings_ui::open(self.hwnd, &self.model.settings, &diagnostic) {
+        if let Err(e) = settings_ui::open(
+            self.hwnd,
+            &self.model.settings,
+            &diagnostic,
+            self.store.path.parent().unwrap(),
+        ) {
             self.error = Some(e.to_string());
         }
     }
@@ -1663,7 +1692,15 @@ impl App {
                 if self.model.todos.is_empty() {
                     gfx::text(
                         dc,
-                        &self.gfx.layout("在上方写下第一件事", 14.0, w - 64.0)?,
+                        &self.gfx.layout(
+                            if self.store.writable {
+                                "在上方写下第一件事"
+                            } else {
+                                "本地任务暂未能读取，原文件已保留"
+                            },
+                            14.0,
+                            w - 64.0,
+                        )?,
                         32.0,
                         158.0 + shift,
                         muted,
@@ -2391,13 +2428,8 @@ unsafe fn run_inner() -> Result<()> {
         )?;
         let hwnd = make_panel()?;
         MAIN.with(|m| m.set(controller));
-        let path =
-            std::path::PathBuf::from(std::env::var_os("LIGHTDO_DATA_DIR").unwrap_or_else(|| {
-                std::path::PathBuf::from(std::env::var_os("APPDATA").unwrap_or_default())
-                    .join("LightDo")
-                    .into_os_string()
-            }))
-            .join("state.json");
+        let path = crate::storage::data_path()
+            .map_err(|message| windows::core::Error::new(E_FAIL, message))?;
         let (store, loaded) = Store::open(path);
         let (mut model, error) = match loaded {
             Ok(model) => (model, None),
@@ -2482,6 +2514,7 @@ unsafe fn run_inner() -> Result<()> {
             activation_grace_until: None,
         };
         app.input = app.editor(INPUT)?;
+        app.update_data_status();
         SendMessageW(
             app.input,
             EM_SETCUEBANNER,
@@ -2506,6 +2539,7 @@ unsafe fn run_inner() -> Result<()> {
             && app.model.settings.introduced
             && app.model.settings.auto_hide
             && !app.model.settings.pinned
+            && app.store.writable
         {
             app.state.hide();
             app.state.step(220.0, true);
@@ -2527,7 +2561,7 @@ unsafe fn run_inner() -> Result<()> {
         }
         if !app.store.writable {
             let _ = EnableWindow(app.input, false);
-            app.message("无法读取轻待的数据文件。原文件保持不变，当前已禁止修改和覆盖保存。请检查 %APPDATA%\\LightDo\\state.json 后重启。可以从托盘正常退出。");
+            app.message(&format!("{}\n\n未完成任务仍保留在本机 LightDo 数据文件夹，当前禁止覆盖保存。请关闭占用文件后重新启动，或从设置的“通用”页打开数据文件夹检查。", app.error.as_deref().unwrap_or("无法读取本地任务")));
         }
         if initial_mode == Mode::Desktop {
             app.model.settings.mode = Mode::Floating;

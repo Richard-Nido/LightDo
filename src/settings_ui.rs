@@ -39,6 +39,7 @@ struct Ui {
     settings: Settings,
     scroll: i32,
     pages: Vec<(usize, HWND)>,
+    data_directory: std::path::PathBuf,
 }
 pub fn take() -> Option<Settings> {
     PENDING.with(|p| p.borrow_mut().take())
@@ -414,6 +415,39 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
                     }
                 }
                 2 => close(),
+                4 => {
+                    let directory =
+                        UI.with(|u| u.borrow().as_ref().map(|ui| ui.data_directory.clone()));
+                    if let Some(directory) = directory {
+                        let result = std::fs::create_dir_all(&directory)
+                            .map_err(|e| e.to_string())
+                            .and_then(|()| unsafe {
+                                let opened = windows::Win32::UI::Shell::ShellExecuteW(
+                                    Some(hwnd),
+                                    w!("open"),
+                                    &HSTRING::from(directory.as_os_str()),
+                                    None,
+                                    None,
+                                    SW_SHOWNORMAL,
+                                );
+                                if opened.0 as isize > 32 {
+                                    Ok(())
+                                } else {
+                                    Err("无法打开本地数据文件夹".into())
+                                }
+                            });
+                        if let Err(error) = result {
+                            unsafe {
+                                MessageBoxW(
+                                    Some(hwnd),
+                                    &HSTRING::from(error),
+                                    w!("轻待"),
+                                    MB_OK | MB_ICONWARNING,
+                                );
+                            }
+                        }
+                    }
+                }
                 3 => {
                     UI.with(|u| {
                         if let Some(ui) = u.borrow_mut().as_mut() {
@@ -433,7 +467,12 @@ unsafe extern "system" fn procedure(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) 
         _ => unsafe { DefWindowProcW(hwnd, msg, w, l) },
     }
 }
-pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
+pub fn open(
+    owner: HWND,
+    settings: &Settings,
+    diagnostic: &str,
+    data_directory: &std::path::Path,
+) -> Result<()> {
     unsafe {
         if let Some(hwnd) = UI.with(|u| u.borrow().as_ref().map(|ui| ui.hwnd)) {
             sync_layer();
@@ -739,13 +778,23 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
         make("STATIC", diagnostic, 0, 24, 354, 420, 88, 0)?;
         make(
             "STATIC",
-            "任务只保存在本机，无需登录或联网。",
+            "任务自动保存在本机，退出、重启和升级后继续保留。",
             0,
             24,
             466,
             420,
-            44,
+            28,
             0,
+        )?;
+        make(
+            "BUTTON",
+            "打开 LightDo 数据文件夹",
+            4,
+            24,
+            500,
+            264,
+            30,
+            BS_PUSHBUTTON as u32 | WS_TABSTOP.0,
         )?;
 
         page.set(usize::MAX);
@@ -787,6 +836,7 @@ pub fn open(owner: HWND, settings: &Settings, diagnostic: &str) -> Result<()> {
             settings: settings.clone(),
             scroll: 0,
             pages: pages.into_inner(),
+            data_directory: data_directory.to_path_buf(),
         };
         populate(&ui);
         show_page(&ui, 0);

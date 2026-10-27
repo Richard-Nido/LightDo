@@ -42,6 +42,7 @@ pub mod diagnostics {
             let hwnd = FindWindowW(w!("LightDo.Panel"), None).ok();
             let mut panel = serde_json::Value::Null;
             let mut runtime = serde_json::Value::Null;
+            let mut data = serde_json::Value::Null;
             if let Some(hwnd) = hwnd {
                 let mut placement = WINDOWPLACEMENT {
                     length: size_of::<WINDOWPLACEMENT>() as u32,
@@ -56,6 +57,10 @@ pub mod diagnostics {
                 let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
                 let popup = GetLastActivePopup(hwnd);
                 let word = GetPropW(hwnd, w!("LightDo.Runtime")).0 as usize;
+                let readable = GetPropW(hwnd, w!("LightDo.DataReadable")).0 as usize;
+                if readable != 0 {
+                    data = serde_json::json!({"readable":readable==2,"tasks":(GetPropW(hwnd,w!("LightDo.TaskCount")).0 as usize).saturating_sub(1),"unfinished":(GetPropW(hwnd,w!("LightDo.UnfinishedCount")).0 as usize).saturating_sub(1)});
+                }
                 if word & 0x100 != 0 {
                     let mode = ["unknown", "Edge", "Floating", "Desktop"][word & 3];
                     let phase = [
@@ -113,7 +118,7 @@ pub mod diagnostics {
                 .into_iter()
                 .map(|r| [r.left, r.top, r.right, r.bottom])
                 .collect();
-            serde_json::json!({"version":env!("CARGO_PKG_VERSION"),"panel":panel,"session":session,"runtime":runtime,
+            serde_json::json!({"version":env!("CARGO_PKG_VERSION"),"panel":panel,"session":session,"runtime":runtime,"data":data,
                 "system":{"clientAnimations":animation_known.then_some(client_animations.as_bool()),"cursor":cursor_known.then_some([cursor.x,cursor.y])},
                 "display":{"primary":[primary.rcMonitor.left,primary.rcMonitor.top,primary.rcMonitor.right,primary.rcMonitor.bottom],"monitors":monitors}})
         }
