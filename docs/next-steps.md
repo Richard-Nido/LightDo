@@ -1,21 +1,15 @@
-# 发布接续点
+# 交付收尾
 
-本机核心验收已经完成，新增停靠范围亦由用户确认正常并明确保留8。现在只推进正式标签Release、最终公开下载安装和实际目录清理，不再重复产品询问或已通过的桌面验收。
+正式v1.0.0已公开，源码标签提交c2c476d9f1d2bfdca00f71faf33af19a0705b1b6，标签工作流40447543051的build/publish均成功。Release draft=false/prerelease=false，6项资产已重新下载并逐项匹配GitHubAPI SHA-256及SHA256SUMS。
 
-- 当前D:\LightDo\lightdo.exe，1.0.0候选SHA8d47bccfe1f868e1308fe38ea66ade985f3594a5b1a4e463e4223a25b3b4345d；最新进程24016，正式AppData5条未完成，snap_distance=8。用户拖动测试后为Edge/Left，最终安装验收可恢复原要求的Right，同时保持8及全部任务。
-- 默认16、范围4–96；设置显示、改8、预览和松手、重新打开8保存均获用户确认，3次冷启动仍8和5条、内容与SHA不变。37项中28通过、9真实桌面实验忽略。f11eec8 CI40446715246全部成功。
-- 真实Desktop图已收到并存docs/images/desktop-current.png（用户提供，仅裁无关桌面），与当时同PID15340/Desktop/5任务诊断对应；Edge/Float图片已存在。图的7b1b879a构建范围已说明，不冒充新停靠参数的直接资源实测。
-- 真实数据读/写失败、原文件不被覆盖、解除只读后保存成功、默认保留及主动删除卸载、恢复原5条、用户D盘安装、Explorer同进程回Floating恢复、WinD/睡眠/图标/IME各DPI等结果均见verification.md；不补造单物理屏无法实测的外接断开等条件。
-- 用户要求尽量不用Computer Use，且之前物理Esc停止控制。保持CLI/文件/诊断优先，需要最终公开下载版显示/中文输入时给用户一次简短人工确认，不自动恢复CUA。
-- 正式AppData为唯一用户数据权威，所有临时保护目录已还原，无遗留锁/只读。不得用local-evidence旧副本覆盖当前任务；清理只在工作区，绝不删D盘安装或AppData。
+最终公开EXE安装包371488字节，SHA831e093c8d9f57dc26385bacdba25ea8a1b751035af9540abb62674be127a576。已使用该下载包安装D:\LightDo，应用SHA9a83383752ac6c4019c3e2bf9c4ab9b48601cf6ea36fd9fc69367de023aca8a2，1.0.0/NotSigned，3次冷启动保留任务/设置，用户明确“正式版正常！”确认玻璃、中文输入和数值8。当前6条任务，原5个任务ID仍在，新增正文仅留本机。
 
-## 接下来顺序
+当前源码默认Right、停靠范围16；用户自定义8已保留。安装准备曾恢复Right，用户后续手动停靠Left，保留其当前选择，不强制覆盖。最终用户关闭面板为TrayHidden，测量明确属于托盘隐藏，不能冒充日常边缘自动隐藏。各构建/场景记录见performance.md，代表测量JSON已移至docs/performance-records。
 
-1. 提交本次最终验收文档和all-true的pending门槛；finalize-acceptance.ps1生成指纹并提交；用release.ps1 -Publish推v1.0.0，已获用户授权，不再征求发布确认。此前无正式tag/Release，不覆盖已公开版本。
-2. 跟踪标签Actions，核实draft=false/prerelease=false、安装包/许可ZIP/SHA/项目LICENSE/第三方声明/依赖清单六项资产完整可下载。失败按真实退出码处理；不要把本地预检当真实公开发布。
-3. 下载最终公开资产，核对SHA，正常退出D盘当前进程，再把最终下载安装器覆盖到D:\LightDo，保留全部任务和snap_distance=8，恢复Right偏好。运行/重启诊断并请用户一次实际显示与中文新增确认。必要时做最终公开构建边缘隐藏采样，所有结果明确哈希范围。
-4. 更新公开Release下载验收记录、README直达链接和清单。正式tag保留当时验收源码，不改写标签；后续交付文档提交可在main。
-5. 保存最终安装包/许可ZIP/SHA到dist，移出最终需要的证据至正式docs后，实际执行clean-delivery -Execute -IncludeTestData。先干净Git、验证没有工作区运行EXE；确认所有保护数据已还原，保留正式AppData当前任务。删除target/.tools/.reference/local-evidence/dist/stage及旧0.1资产，核实目录整洁和正式文件/安装/数据未受影响。
-6. 最终回答源码/Release/EXE链接、版本/tag提交SHA/安装包SHA、本机D盘EXE路径、三模式图/测试结果、默认16当前8与维护发布步骤。只有全部完成才update_goal complete。
+所有临时AppData保护目录均已还原，原有及新增任务均在正式%APPDATA%/LightDo。不要从local-evidence旧副本覆盖当前数据。用户要求避免Computer Use，已经采用CLI/文件/诊断与人工验收，未再恢复自动桌面控制。
 
-工具：Rust1.99.1/VS17.14.42/SDK26100/NSIS3.12；gh .tools/gh/bin/gh.exe，CARGO_TARGET_DIR=target/candidate。WindowsGUI诊断直接管道ConvertFromJson；退出用StartProcess -Wait读ExitCode，禁止强杀。调用纯PS验证脚本要按真实异常/独立pwsh退出码判断，不拿旧LASTEXITCODE误报。清理后gh缓存会删除，因此完成下载/公开API复核再清理。
+唯一剩余：实际工作目录清理、清理后校验和最终完成审计。请先提交当前正式文档/JSON，再运行scripts/clean-delivery.ps1 -Execute -IncludeTestData；删除target/.tools/.reference/local-evidence/dist/stage及旧0.1资产，保留源码/Git、正式文档/图片和dist当前公开EXE/许可ZIP/SHA。不得删除D盘安装、AppData或其他项目。
+
+GitHub CLI已从项目临时目录迁到%LOCALAPPDATA%/Programs/GitHub CLI/gh.exe，原二进制校验一致、原Richard-Nido登录保留、原本引用本项目缓存的两个Git helper路径已更新，用户PATH已加入。清理后请使用稳定CLI路径；不要使用即将删除的.tools/gh。
+
+清理后更新release-validation.json的cleanup.executed、verification和清单，提交推送；核对git status干净、所列中间目录及旧资产不存在、当前dist SHA正确、D盘应用及AppData任务数/哈希未受影响。源标签保持不改写，main后续只有交付记录推进。然后给用户仓库/Release/EXE链接、本机路径/版本/源码提交/安装包SHA、三模式图和真实测试范围，确实完成后update_goal complete。

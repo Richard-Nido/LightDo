@@ -2,7 +2,7 @@
 
 轻待是 Windows 11 x64 上的本地单清单待办。把面板放在屏幕边缘，需要时呼出，写下一件事；也可以拖成悬浮窗，或固定在桌面层。
 
-**1.0.0 已通过本机核心验收。** 正式安装包统一由标签工作流检查、构建、下载校验后提供在[GitHub Releases](https://github.com/Richard-Nido/LightDo/releases)。发布状态以发行页为准。进度见[实施清单](docs/implementation-checklist.md)，真实结果和未验证范围见[验收记录](docs/verification.md)。
+**1.0.0 已正式发布并完成公开下载版安装验收。** [下载Windows x64 EXE](https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/LightDo_1.0.0_x64-setup.exe) · [正式Release](https://github.com/Richard-Nido/LightDo/releases/tag/v1.0.0) · [SHA-256校验文件](https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/SHA256SUMS.txt)。真实结果和未验证范围见[验收记录](docs/verification.md)，机器可读的公开资产与安装核验见[发布记录](docs/release-validation.json)。
 
 ## 实际运行
 

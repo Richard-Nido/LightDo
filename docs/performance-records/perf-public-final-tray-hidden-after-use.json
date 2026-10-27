@@ -1,0 +1,158 @@
+{
+  "name": "public-final-tray-hidden-after-use",
+  "scenario": "TrayHidden",
+  "scenarioMatchedAtBothEnds": true,
+  "expectedState": "Hidden",
+  "expectedStateMatchedAtBothEnds": true,
+  "windowStateSamples": 37,
+  "unexpectedWindowStateSamples": 0,
+  "initialSettings": {
+    "mode": "Edge",
+    "side": "Left",
+    "autoHide": true,
+    "pinned": false
+  },
+  "finalSettings": {
+    "mode": "Edge",
+    "side": "Left",
+    "autoHide": true,
+    "pinned": false
+  },
+  "measuredAt": "2026-10-27T12:24:43.6126134+08:00",
+  "seconds": 38.7555493,
+  "logicalProcessors": 20,
+  "cpuMilliseconds": 0.0,
+  "cpuPercentNormalized": 0.0,
+  "workingSetMeanMiB": 93.73690878378379,
+  "workingSetEndMiB": 93.73828125,
+  "privateMiB": 70.9765625,
+  "handles": 511,
+  "gpuMetric": "Maximum active engine utilization of this process per sample, not total system GPU",
+  "gpuSamples": 36,
+  "gpuMeanPercent": 0.0,
+  "gpuPeakPercent": 0.0,
+  "dedicatedGpuMeanMiB": 0.0,
+  "sharedGpuMeanMiB": 78.390625,
+  "gpuError": null,
+  "initial": {
+    "data": {
+      "readable": true,
+      "tasks": 6,
+      "unfinished": 6
+    },
+    "display": {
+      "monitors": [
+        [
+          0,
+          0,
+          2560,
+          1600
+        ]
+      ],
+      "primary": [
+        0,
+        0,
+        2560,
+        1600
+      ]
+    },
+    "panel": {
+      "cloaked": 0,
+      "dpi": 144,
+      "foreground": false,
+      "minimized": false,
+      "rect": [
+        12,
+        390,
+        537,
+        1210
+      ],
+      "showCommand": 1,
+      "toolWindow": false,
+      "topmost": true,
+      "visible": false,
+      "visibleOwnedPopup": false
+    },
+    "runtime": {
+      "backgroundReady": false,
+      "captureActive": false,
+      "captureAllocated": true,
+      "mode": "Edge",
+      "phase": "TrayHidden"
+    },
+    "session": {
+      "lockFlag": 1,
+      "locked": false,
+      "state": 0
+    },
+    "system": {
+      "clientAnimations": false,
+      "cursor": [
+        1345,
+        694
+      ]
+    },
+    "version": "1.0.0"
+  },
+  "final": {
+    "data": {
+      "readable": true,
+      "tasks": 6,
+      "unfinished": 6
+    },
+    "display": {
+      "monitors": [
+        [
+          0,
+          0,
+          2560,
+          1600
+        ]
+      ],
+      "primary": [
+        0,
+        0,
+        2560,
+        1600
+      ]
+    },
+    "panel": {
+      "cloaked": 0,
+      "dpi": 144,
+      "foreground": false,
+      "minimized": false,
+      "rect": [
+        12,
+        390,
+        537,
+        1210
+      ],
+      "showCommand": 1,
+      "toolWindow": false,
+      "topmost": true,
+      "visible": false,
+      "visibleOwnedPopup": false
+    },
+    "runtime": {
+      "backgroundReady": false,
+      "captureActive": false,
+      "captureAllocated": true,
+      "mode": "Edge",
+      "phase": "TrayHidden"
+    },
+    "session": {
+      "lockFlag": 1,
+      "locked": false,
+      "state": 0
+    },
+    "system": {
+      "clientAnimations": false,
+      "cursor": [
+        1345,
+        694
+      ]
+    },
+    "version": "1.0.0"
+  },
+  "binarySha256": "9a83383752ac6c4019c3e2bf9c4ab9b48601cf6ea36fd9fc69367de023aca8a2"
+}

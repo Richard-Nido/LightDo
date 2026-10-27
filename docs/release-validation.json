@@ -1,0 +1,129 @@
+{
+  "version": "1.0.0",
+  "tag": "v1.0.0",
+  "sourceCommit": "c2c476d9f1d2bfdca00f71faf33af19a0705b1b6",
+  "sourceFingerprint": "41947b11ee69a15e51d359b9f51bdd79f02980128545d0a97f1e8249a9b2955d",
+  "releaseUrl": "https://github.com/Richard-Nido/LightDo/releases/tag/v1.0.0",
+  "publishedAt": "2026-10-27T04:05:28Z",
+  "draft": false,
+  "prerelease": false,
+  "workflowUrl": "https://github.com/Richard-Nido/LightDo/actions/runs/40447543051",
+  "workflowResult": "success",
+  "downloadedAssets": [
+    {
+      "name": "LICENSE",
+      "url": "https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/LICENSE",
+      "size": 1083,
+      "sha256": "c7c43b5d71546cc801e030f451d4de4bd0fe1a804dd57800e7037621d885865b",
+      "githubDigest": "sha256:c7c43b5d71546cc801e030f451d4de4bd0fe1a804dd57800e7037621d885865b",
+      "githubDigestMatches": true
+    },
+    {
+      "name": "LightDo_1.0.0_licenses.zip",
+      "url": "https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/LightDo_1.0.0_licenses.zip",
+      "size": 181882,
+      "sha256": "b26009af99c17264890f6cbf8b2bb495591a9ac28ec7b467a434de77a609aedf",
+      "githubDigest": "sha256:b26009af99c17264890f6cbf8b2bb495591a9ac28ec7b467a434de77a609aedf",
+      "githubDigestMatches": true
+    },
+    {
+      "name": "LightDo_1.0.0_x64-setup.exe",
+      "url": "https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/LightDo_1.0.0_x64-setup.exe",
+      "size": 371488,
+      "sha256": "831e093c8d9f57dc26385bacdba25ea8a1b751035af9540abb62674be127a576",
+      "githubDigest": "sha256:831e093c8d9f57dc26385bacdba25ea8a1b751035af9540abb62674be127a576",
+      "githubDigestMatches": true
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "url": "https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/SHA256SUMS.txt",
+      "size": 189,
+      "sha256": "179bd1581e76eeb021a98b540a16b7916cd7ed4b7a40080212eea318d8cfa98e",
+      "githubDigest": "sha256:179bd1581e76eeb021a98b540a16b7916cd7ed4b7a40080212eea318d8cfa98e",
+      "githubDigestMatches": true
+    },
+    {
+      "name": "THIRD_PARTY_DEPENDENCIES.txt",
+      "url": "https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/THIRD_PARTY_DEPENDENCIES.txt",
+      "size": 3445,
+      "sha256": "0b0999db10e2cf7f3ef1c132f6f244235b3f06efe486ce7375c90ffa1d0778e1",
+      "githubDigest": "sha256:0b0999db10e2cf7f3ef1c132f6f244235b3f06efe486ce7375c90ffa1d0778e1",
+      "githubDigestMatches": true
+    },
+    {
+      "name": "THIRD_PARTY_NOTICES.md",
+      "url": "https://github.com/Richard-Nido/LightDo/releases/download/v1.0.0/THIRD_PARTY_NOTICES.md",
+      "size": 1633,
+      "sha256": "9e9022085ad4921df81af8a5c3bfe3dd227b723ecadacff5e212f3bd811b0ca9",
+      "githubDigest": "sha256:9e9022085ad4921df81af8a5c3bfe3dd227b723ecadacff5e212f3bd811b0ca9",
+      "githubDigestMatches": true
+    }
+  ],
+  "installation": {
+    "installationExitCode": 0,
+    "installerSha256": "831e093c8d9f57dc26385bacdba25ea8a1b751035af9540abb62674be127a576",
+    "originalTaskPayloadUnchanged": true,
+    "snapDistance": 8,
+    "installerBytes": 371488,
+    "directory": "D:\\LightDo",
+    "appSha256": "9a83383752ac6c4019c3e2bf9c4ab9b48601cf6ea36fd9fc69367de023aca8a2",
+    "finalUiConfirmed": true,
+    "side": "Left",
+    "taskCountBeforeFinalUi": 5,
+    "signatureStatus": "NotSigned",
+    "threeColdRestartsPassed": true,
+    "appVersion": "1.0.0",
+    "taskCountAfterFinalUi": 6,
+    "originalFiveTaskIdsRetained": true,
+    "defaultSide": "Right",
+    "sideNote": "Final installer restored Right; later manual use docked to Left, current user state retained",
+    "userConfirmedGlassChineseImeAndSetting": true
+  },
+  "cleanup": {
+    "executed": false
+  },
+  "runtimePayload": {
+    "directImportedDlls": [
+      "user32.dll",
+      "kernel32.dll",
+      "api-ms-win-core-winrt-l1-1-0.dll",
+      "combase.dll",
+      "oleaut32.dll",
+      "api-ms-win-core-winrt-error-l1-1-0.dll",
+      "api-ms-win-core-synch-l1-2-0.dll",
+      "ole32.dll",
+      "dwmapi.dll",
+      "ntdll.dll",
+      "advapi32.dll",
+      "d3d11.dll",
+      "d2d1.dll",
+      "dcomp.dll",
+      "dwrite.dll",
+      "wtsapi32.dll",
+      "gdi32.dll",
+      "shell32.dll",
+      "comctl32.dll",
+      "imm32.dll",
+      "bcryptprimitives.dll",
+      "KERNEL32.dll"
+    ],
+    "separateVcRuntimeDllInImportTable": false,
+    "startMenuTargetCorrect": true,
+    "installedLegalFiles": [
+      {
+        "name": "LICENSE",
+        "matchesRelease": true
+      },
+      {
+        "name": "THIRD_PARTY_NOTICES.md",
+        "matchesRelease": true
+      },
+      {
+        "name": "THIRD_PARTY_DEPENDENCIES.txt",
+        "matchesRelease": true
+      }
+    ],
+    "appSignature": "NotSigned"
+  },
+  "publicBinaryAfterUseResourceScenario": "TrayHidden, not EdgeAutoHidden"
+}
