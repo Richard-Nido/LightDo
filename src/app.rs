@@ -541,13 +541,17 @@ impl App {
         self.model.settings.width = (r.w as f32 / self.scale).round() as i32;
         self.model.settings.height = (r.h as f32 / self.scale).round() as i32;
         let work = platform::primary().rcWork;
-        self.snap_preview = if (r.x - work.left).abs() < (48.0 * self.scale) as i32 {
-            Some(Side::Left)
-        } else if (r.x + r.w - work.right).abs() < (48.0 * self.scale) as i32 {
-            Some(Side::Right)
-        } else {
-            None
-        };
+        self.snap_preview = geometry::snap_side(
+            r,
+            geometry::Rect {
+                x: work.left,
+                y: work.top,
+                w: work.right - work.left,
+                h: work.bottom - work.top,
+            },
+            self.model.settings.snap_distance,
+            self.scale,
+        );
         self.arrange_background();
         self.dirty = true;
     }
@@ -2157,12 +2161,24 @@ impl App {
                 self.model.settings.x = r.left;
                 self.model.settings.y = r.top;
                 let work = platform::primary().rcWork;
-                if (r.left - work.left).abs() < 28 {
-                    self.model.settings.side = Side::Left;
-                    self.mode(Mode::Edge)
-                } else if (r.right - work.right).abs() < 28 {
-                    self.model.settings.side = Side::Right;
-                    self.mode(Mode::Edge)
+                if let Some(side) = geometry::snap_side(
+                    geometry::Rect {
+                        x: r.left,
+                        y: r.top,
+                        w: r.right - r.left,
+                        h: r.bottom - r.top,
+                    },
+                    geometry::Rect {
+                        x: work.left,
+                        y: work.top,
+                        w: work.right - work.left,
+                        h: work.bottom - work.top,
+                    },
+                    self.model.settings.snap_distance,
+                    self.scale,
+                ) {
+                    self.model.settings.side = side;
+                    self.mode(Mode::Edge);
                 }
                 self.save();
             }

@@ -27,6 +27,9 @@ pub enum Theme {
     Light,
     Dark,
 }
+pub const DEFAULT_SNAP_DISTANCE: u32 = 16;
+pub const MIN_SNAP_DISTANCE: u32 = 4;
+pub const MAX_SNAP_DISTANCE: u32 = 96;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -37,6 +40,7 @@ pub struct Settings {
     pub auto_hide: bool,
     pub hide_ms: u64,
     pub dwell_ms: u64,
+    pub snap_distance: u32,
     pub pinned: bool,
     pub locked: bool,
     pub topmost: bool,
@@ -62,6 +66,7 @@ impl Default for Settings {
             auto_hide: true,
             hide_ms: 400,
             dwell_ms: 250,
+            snap_distance: DEFAULT_SNAP_DISTANCE,
             pinned: false,
             locked: false,
             topmost: false,
@@ -108,6 +113,7 @@ impl Model {
         if !(10..=90).contains(&self.settings.opacity)
             || !(80..=3000).contains(&self.settings.dwell_ms)
             || !(100..=5000).contains(&self.settings.hide_ms)
+            || !(MIN_SNAP_DISTANCE..=MAX_SNAP_DISTANCE).contains(&self.settings.snap_distance)
         {
             return Err("设置值超出范围；原文件已保留".into());
         }
@@ -201,6 +207,21 @@ mod tests {
                 .unwrap()
                 .contains("import_decided")
         );
+    }
+    #[test]
+    fn existing_tasks_gain_the_smaller_snap_default_and_keep_a_custom_distance() {
+        let json = r#"{"version":1,"todos":[{"id":"old","text":"保留已有任务 🙂","done":false}],"settings":{"mode":"Floating"}}"#;
+        let mut model: Model = serde_json::from_str(json).unwrap();
+        assert_eq!(model.settings.snap_distance, 16);
+        assert!(model.validate().is_ok());
+        model.settings.snap_distance = 8;
+        let loaded: Model = serde_json::from_str(&serde_json::to_string(&model).unwrap()).unwrap();
+        assert_eq!(loaded.settings.snap_distance, 8);
+        assert_eq!(loaded.todos, model.todos);
+        for invalid in [0, MIN_SNAP_DISTANCE - 1, MAX_SNAP_DISTANCE + 1, u32::MAX] {
+            model.settings.snap_distance = invalid;
+            assert!(model.validate().is_err());
+        }
     }
     #[test]
     fn future_or_duplicate_data_rejected() {

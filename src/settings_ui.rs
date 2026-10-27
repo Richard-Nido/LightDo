@@ -1,6 +1,6 @@
 //! Native modeless settings dialog. It edits settings only, never a second
 //! todo list. System controls provide keyboard and accessibility support.
-use crate::model::{Mode, Settings, Side, Theme};
+use crate::model::{MAX_SNAP_DISTANCE, MIN_SNAP_DISTANCE, Mode, Settings, Side, Theme};
 use std::cell::RefCell;
 use windows::{
     Win32::{
@@ -27,6 +27,7 @@ const FULL: i32 = 312;
 const KEY: i32 = 313;
 const START: i32 = 314;
 const PAGES: i32 = 315;
+const SNAP: i32 = 316;
 thread_local! {
     static UI:RefCell<Option<Ui>>=const{RefCell::new(None)};
     static PENDING:RefCell<Option<Settings>>=const{RefCell::new(None)};
@@ -155,6 +156,7 @@ unsafe fn populate(ui: &Ui) {
         send(ui.hwnd, OPACITY, TBM_SETPOS, 1, c.opacity as isize);
         set_number(ui.hwnd, HIDE, c.hide_ms);
         set_number(ui.hwnd, DWELL, c.dwell_ms);
+        set_number(ui.hwnd, SNAP, u64::from(c.snap_distance));
         for (id, on) in [
             (AUTO, c.auto_hide),
             (PIN, c.pinned),
@@ -200,6 +202,7 @@ unsafe fn sync_mode_controls(hwnd: HWND) {
             (HIDE, mode == 0),
             (DWELL, mode == 0),
             (FULL, mode == 0),
+            (SNAP, mode != 2),
         ] {
             let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(
                 control(hwnd, id),
@@ -239,6 +242,10 @@ unsafe fn read(ui: &Ui) -> std::result::Result<Settings, String> {
         if !(100..=5000).contains(&c.hide_ms) || !(80..=3000).contains(&c.dwell_ms) {
             return Err("收回延迟范围 100–5000 ms；边缘停留范围 80–3000 ms。".into());
         }
+        c.snap_distance = number(ui.hwnd, SNAP)
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|value| (MIN_SNAP_DISTANCE..=MAX_SNAP_DISTANCE).contains(value))
+            .ok_or("拖动停靠范围为4–96，数值越小，需拖得越靠近边缘。")?;
         c.auto_hide = checked(ui.hwnd, AUTO);
         c.pinned = checked(ui.hwnd, PIN);
         c.locked = checked(ui.hwnd, LOCK);
@@ -709,6 +716,18 @@ pub fn open(
                 BS_AUTOCHECKBOX as u32 | WS_TABSTOP.0,
             )?;
         }
+        label("拖动停靠范围", 24, 278, 130)?;
+        make(
+            "EDIT",
+            "",
+            SNAP,
+            160,
+            274,
+            72,
+            28,
+            WS_BORDER.0 | WS_TABSTOP.0 | ES_NUMBER as u32,
+        )?;
+        label("默认16，范围4–96", 248, 278, 200)?;
         label("收回延迟（ms）", 24, 354, 130)?;
         make(
             "EDIT",
@@ -733,7 +752,7 @@ pub fn open(
         )?;
         make(
             "STATIC",
-            "停留越久，越不易误触。不适用于当前模式的选项会自动禁用。",
+            "停留越久，越不易误触。停靠范围越小，需拖得越近；距离随系统缩放调整。",
             0,
             24,
             392,

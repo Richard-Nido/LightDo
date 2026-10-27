@@ -1,6 +1,6 @@
 # 开发与发布
 
-当前尚未发布。正式标签被本机玻璃、窗口模式、中文输入和安装验收门槛阻止；不能以编译成功代替。
+正式标签要求本机玻璃、窗口模式、中文输入和安装验收通过，并绑定已提交源码指纹；不能以编译成功代替。本机核心结果已记录，公开Release状态及最终下载结果以发行页和verification.md后续记录为准。
 
 本机使用 Rust 1.99.1 x86_64-pc-windows-msvc、Visual Studio 2022 Build Tools 17.14.42（C++ 桌面工作负载）及 Windows SDK 10.0.26100。构建脚本使用 PowerShell 7；运行应用本身不需要 PowerShell 或开发工具。
 
@@ -36,7 +36,7 @@
 2. 对该 EXE 完成本机实际验收，更新 `docs/verification.md` 及 `docs/release-acceptance.json`；只有实际通过的项目才能置为 true。提交最终验收记录后运行 `scripts/finalize-acceptance.ps1`，它会对不含自身的已提交源码清单生成指纹并提交验收门槛。
 3. 运行 `scripts/release.ps1 -Publish`。脚本阻止脏工作区、版本不一致、验收指纹不匹配、未通过项目和重复标签。
 4. 标签触发 Windows Actions：核验门槛、检查、测试、构建、打包、生成许可附件与 SHA-256；发布任务先创建草稿并上传全部资产，重新下载逐一核对SHA-256后，才改为公开正式Release。只有发布任务有 contents:write。
-5. 下载 Release EXE 对照 SHA-256 并复核安装运行。当前尚未走到正式发布这一步。
+5. 下载 Release EXE 对照 SHA-256 并复核安装运行，把实际公开状态、下载哈希与安装结果追加到verification.md。
 
 已经公开的版本不改写标签；修复源码后提高补丁版本再发布。发布前未通过的构建可直接修复主分支，不能伪造已通过状态。未签名状态需在每次 Release 说明中保留。
 

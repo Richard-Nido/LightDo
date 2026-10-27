@@ -1,4 +1,5 @@
 //! Physical-pixel drag/resize math, independent of HWNDs and rendering.
+use crate::model::Side;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rect {
     pub x: i32,
@@ -48,6 +49,20 @@ pub fn drag(original: Rect, kind: Gesture, delta: (i32, i32), scale: f32) -> Rec
     }
     r
 }
+/// Preview and release use the same logical distance at every display scale.
+pub fn snap_side(panel: Rect, work: Rect, distance: u32, scale: f32) -> Option<Side> {
+    let threshold = (distance as f32 * scale).round() as i64;
+    let left = (i64::from(panel.x) - i64::from(work.x)).abs();
+    let right =
+        (i64::from(panel.x) + i64::from(panel.w) - i64::from(work.x) - i64::from(work.w)).abs();
+    if left <= threshold && left <= right {
+        Some(Side::Left)
+    } else if right <= threshold {
+        Some(Side::Right)
+    } else {
+        None
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +109,47 @@ mod tests {
                 h: 600
             }
         );
+    }
+    #[test]
+    fn snap_distance_scales_at_both_edges_and_custom_values_change_the_boundary() {
+        let work = Rect {
+            x: -1920,
+            y: 0,
+            w: 1920,
+            h: 1080,
+        };
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let threshold = (16.0_f32 * scale).round() as i32;
+            let mut panel = Rect {
+                x: work.x + threshold,
+                y: 100,
+                w: 400,
+                h: 600,
+            };
+            assert_eq!(snap_side(panel, work, 16, scale), Some(Side::Left));
+            panel.x += 1;
+            assert_eq!(snap_side(panel, work, 16, scale), None);
+            panel.x = work.x + work.w - panel.w - threshold;
+            assert_eq!(snap_side(panel, work, 16, scale), Some(Side::Right));
+            panel.x -= 1;
+            assert_eq!(snap_side(panel, work, 16, scale), None);
+            assert_eq!(snap_side(panel, work, 32, scale), Some(Side::Right));
+        }
+    }
+    #[test]
+    fn wide_snap_ranges_choose_the_nearest_edge_instead_of_always_the_left() {
+        let work = Rect {
+            x: 0,
+            y: 0,
+            w: 500,
+            h: 800,
+        };
+        let panel = Rect {
+            x: 70,
+            y: 50,
+            w: 400,
+            h: 600,
+        };
+        assert_eq!(snap_side(panel, work, 96, 1.0), Some(Side::Right));
     }
 }

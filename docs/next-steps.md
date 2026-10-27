@@ -1,40 +1,39 @@
 # 当前接续点
 
-完整目标：LightDo完整产品、本机真实验收、Win11 x64 EXE、独立公开仓库、正式标签自动公开Release、最终下载校验安装和目录清理。建仓/推送/正式发布已授权。尚无正式标签或Release，验收JSON仍pending。
+完整目标仍为LightDo完整产品、本机真实验收、Win11 x64 EXE、独立公开仓库、正式标签自动公开Release、最终下载校验安装和目录清理。建仓/推送/发布已授权。当前没有正式标签或Release，不能宣称完成。
 
-## 最新现场（2026-10-27，用户手动装至D盘后）
+## 最新现场（2026-10-27，核心验收完成后）
 
-- 用户明确要求后续尽量避免Computer Use，改为命令行/文件/真实进程诊断优先；需要UI时给用户简短手工操作。此前物理Esc已停止Computer Use，不擅自恢复GUI自动控制。
-- 用户人工安装至D:\LightDo，EXE版本1.0.0，SHA7b1b879a8bff6f2a89b8ebb048f667311b43d2a5807d0bc50c22643458c5126f，与dist/stage一致。卸载登记指向D:\LightDo\uninstall.exe，开始菜单入口存在。
-- 原有5条未完成任务已从保护目录完整恢复，任务ID/正文/完成状态保持不变。先按保护SHA逐字节恢复，再只将模式/侧恢复Edge/Right。不要再从旧副本覆盖当前正式文件。
-- 当前正式数据%APPDATA%/LightDo/state.json，5条未完成，Edge/Right/Light48/350×547/CtrlAltL/自启关闭。保护目录LightDo.acceptance-backup-5ab...已恢复到原位置，不再存在；local-evidence/installer-gui-protection.json的restored=true。
-- D盘实际安装版3次完整退出/冷启动PID14436/23260/9420均readable=true、tasks=5、unfinished=5，任务设置内容与本轮SHA不变，约311/243/235ms至数据/输入控件创建（含200ms轮询与诊断子进程）。当前应为PID9420，执行前重新检查。
-- 已异步请用户按CtrlAltL确认5条任务实际可见，并打开菜单后移开鼠标确认菜单保持。正在等待结果，不要因为命令行可读就代替用户视觉结果。
+- 最新用户新增要求：悬浮拖回边缘距离更小且可设置。已实现默认48→16DIP，窗口页“拖动停靠范围”可4–96，桌面模式禁用；自定义拖动预览/松手及系统移动结束共用geometry::snap_side，统一缩放和近侧优先。
+- 新安装版D:\LightDo SHA8d47bccfe1f868e1308fe38ea66ade985f3594a5b1a4e463e4223a25b3b4345d，PID37184，原5条任务/原有偏好及安装器覆盖前后旧文件字节保持。旧JSON读默认16，保存前磁盘新字段可null；不能当成0。
+- 已向用户异步请其在设置窗口页确认默认16，改8应用，悬浮拖近边缘检查更近才预览/松手停靠，再确认8保留。待回复后读JSON、正常退出重启验证新值及5条任务，再恢复windowModes=true。正式发布还没创建tag。
+- 新37测试中28通过、9忽略；已构建打包371659字节、安装哈希与stage相同。新增旧数据默认/自定义往返/安全范围、各DPI左右边界及负坐标/近侧回归。
+- 用户最后桌面截图已收到并裁存docs/images/desktop-current.png；当时同PID15340/5条/Desktop，1面板1控制，约3轮模式手测“一切正常”，WS111.21→113.02、私有89.92→91.07MiB、句柄502→506，仅短时样本。此图是7b1b879a构建，不冒充新增距离后的资源/GUI实测。
+- 下方关于最后截图待提供的历史步骤已完成；下一步先完成新增距离实测，然后提交/finalize/推正式tag。新代码验收未完成前保持status=pending、windowModes=false，源码指纹仍null。
 
-## 最近真实通过
+- 用户要求尽量避免Computer Use；物理Esc此前已停止控制，之后全部采用CLI/文件/进程诊断和用户人工验收，不擅自恢复CUA。
+- 唯一当前应用D:\LightDo\lightdo.exe，版本1.0.0、SHA7b1b879a8bff6f2a89b8ebb048f667311b43d2a5807d0bc50c22643458c5126f，PID15340；正式数据%APPDATA%/LightDo/state.json，5条未完成，Edge/Right/Light48/350×547/CtrlAltL/自启关闭。
+- 所有原数据保护目录都已完整还原，AppData旁没有未恢复LightDo.acceptance目录。不要再从local-evidence旧副本覆盖正式文件。只剩隔离测试数据及证据，最终清理会删除。
+- 最新用户反馈：任务可见/菜单保持正常；边缘快速掠过、停留呼出、离开后快速返回约3轮“边缘手势正常”。
+- 主动删除卸载第一轮用户忘记勾选，未记PASS；第二轮明确“已勾选并卸载”，实际合成数据目录、应用和卸载登记消失，保护原数据SHA不变。之后自动重装D盘，逐字节恢复原数据，3次冷启动均5条，内容和SHA不变。
+- 保存失败GUI：最初180秒共享锁超时，用户正常添加，判无效注入。改隔离state.json只读后用户确认失败提示；实际文件仍2条/SHA不变，内存4条、临时文件0，正式5条不变。解除只读、正常退出后4条全保存、原2条ID保持。
+- 损坏读取GUI：隔离无效JSON，diagnostic readable=false，用户确认提示/输入禁写/原文件保留说明正常；退出前后坏字节SHA不变。已退出隔离应用、恢复正式D盘5条，文件SHA与测试前一致，无遗留锁或只读属性。
+- 先前用户WinD往返、睡眠恢复/组件输入/图标正常；Explorer真实重启14816→18580，同一轻待进程38136回Floating/非置顶/可见、5条、背景就绪，是可用悬浮恢复而非自动继续Desktop。
+- 34测试中25通过、9真实桌面实验忽略。main上0b4e781的CI40441239032已成功，之后只有验收/README等文档改动，没有应用二进制改变。
+- docs/release-acceptance.json四核心标记已据实置true，但status仍pending、sourceFingerprint=null：待最终视觉证据、提交后finalize，不得直接提前推tag。
 
-- 用户睡眠恢复、组件输入和桌面图标正常；WinD往返早前新版已手测通过。
-- 用户手动重启Explorer后反馈自动恢复成功；实际Explorer14816→18580，同一LightDo PID38136恢复Floating/非置顶/可见，5条任务可读、真实背景就绪。是明确恢复悬浮降级，不假称自动保持Desktop。
-- 默认卸载实际数据页可见，删除数据默认未勾。现有数据先移动保护并校验，只用一条合成标记。用户授权后向导自行结束（不是工具最终点击）；实际应用/卸载登记/开始菜单/测试自启全部清理，合成数据SHA及保护原始SHA不变。
-- 随后安装欢迎页被识别，但用户物理Esc停止自动控制，未记工具GUI安装通过。现在安装完成来自用户手动说明+D盘真实文件/登记/运行验证。
-- 多任务32条隔离清单滚到末尾、Tab回可见首项、Space完成/撤销原位、中文Emoji全选复制连续粘贴3段、Enter新增、空白不新增通过。用户授权单条Delete后33→32、其他ID不变、正式5条SHA不变；授权已用完，不扩大。
-- 最新34测试中25通过、9真实桌面实验忽略；PowerShell语法/隔离清理专项/fmt/check通过。当前EXE含数据目录补强、短锁重试、明确读失败空态、设置文件夹入口、列表键盘保持、内部鼠标Esc收回修正。
-- 最新安装版右边缘隐藏38.95秒、37样本均隐藏，CPU0.0120%、GPU0%、工作集98.76/结束95.83MiB、私有72.02、共享GPU87.57、句柄531，哈希范围见performance.md。
-- main已推e221ede，CI40438071297成功；42c2273 CI40437515095也成功。当前只有后续文档、test-restart.ps1语义比较修正待提交，无应用二进制变动。
+## 下一步（当前正在请求最后模式图）
 
-## 重要未完成
+1. 已预热正式Edge玻璃，mode-cycles-before.json：PID15340、5任务、WS111.21MiB/私有89.92MiB/句柄502/线程13。请用户菜单Edge→Floating→Desktop往返约3轮，任务一致且一个面板，最后停Desktop、回桌面并提供仅含轻待+少量桌面的截图。已有Edge和Floating实际图片，缺Desktop交付图；遵循用户偏好人工提供，不用CUA。截图只在普通final消息请求，request_user_input_async不支持要求上传图片。
+2. 收到图后先核验当前诊断/同PID/模式/任务，再查看用户图片、裁去无关或隐私区域，保存docs/images内并记录来源与模式范围。仅短时3轮不称长期无泄漏。复核重复窗口/资源计数，不伪造长期结果。
+3. 更新README/CHANGELOG/Release说明/verification与清单为本机实际通过，明确单物理显示器、仅Win11 26H2、未签名、注销启动等未测限制。验收当前源码提交后finalize-acceptance生成指纹并提交。
+4. 运行release -Publish，跟踪正式v1.0.0标签Actions直到公开draft=false/prerelease=false、6项资产齐全。不要覆盖已公开标签。下载全部资产核SHA，最终公开安装器安装D:\LightDo（正常退出，保留任务），运行诊断及必要用户最终UI确认。
+5. 最终Release下载安装验收后再实际清理target/.tools/.reference/local-evidence/dist/stage和旧0.1资产，保留源码/Git/正式文档/当前版本交付资产；AppData和D盘安装不在清理范围。清理专项合成测试已通过，但真实项目未执行过。最后给源码/Release/EXE链接、版本/提交/SHA、本机EXE路径、3模式真实图和真实测试范围。
 
-1. 等用户五条任务可见/菜单保持反馈；必须人工交互的剩余边缘快速掠过/离开返回/反向等可短清单一次验证，不用Computer Use反复操作。
-2. 卸载“主动删除数据”尚未实际验证。用户刚装好D盘，不能直接删除当前5条。需要先正常退出、完整保护正式目录，再准备仅一条合成任务，请用户在D盘卸载向导勾选主动删除并卸载，之后核验目录与登记清理；再安装并恢复原始数据。按用户偏好用人工操作，避免CUA。此前只授权默认保留卸载，不扩展。
-3. 写失败/损坏保护已有单元测试与禁写逻辑，真实GUI提示仍待；可用隔离合成状态+受控文件锁，请用户确认提示，不涉及原5条。
-4. 安装器完整本机验收结束，三个P0/本机关键门槛实际通过后才更新release-acceptance、finalize、release -Publish。标签Actions构建检查/草稿上传/下载逐文件校验后公开。随后下载最终公开资产SHA核对、从最终包安装运行，再实际清理target/.tools/.reference/local-evidence/dist/stage与旧版资产。
-5. 完善正式README/Release说明/验证矩阵，最终给源码/Release/EXE链接+SHA/真实测试范围。单物理显示器与仅本机Win11 26H2如实列限制，不伪造外接屏断开或多版本保证。
+## 关键工具约束
 
-## 保护与工具
-
-- D盘安装版为唯一当前正常应用，正式AppData必须保留。local-evidence/ux-fixture-current.json是已退出隔离32条清单，不能混入正式数据；最终清理会删除中间数据。
-- test-restart.ps1现在完整比较解析后的任务和设置内容，另报告字节SHA；PowerShell/Rust空白规范化不能当数据丢失，内容变化仍立即失败保留现场。3次最新D盘测试内容和字节均保持。
-- Windows GUI EXE --diagnose直接管道ConvertFromJson，不先赋值再管道以免关闭stdout。正常退出StartProcess -Wait -PassThru读取ExitCode并等进程结束，禁止强杀LightDo。
-- 如后续获准恢复Sky，只用mcp__node_repl__js的@oai/sky、globalThis读写、从list_windows唯一选择并用state.window刷新。禁止Windows键、Codex/认证/安全UI，物理Esc或锁屏立刻停止；当前优先完全不用。
-- Rust1.99.1/VS17.14.42/SDK26100/NSIS3.12；gh .tools/gh/bin/gh.exe；CARGO_TARGET_DIR=target/candidate。root app旧，root玻璃fixture是最新双缓冲且支持--fullscreen/--static。
-- 清理专项在独立合成仓库通过，实际项目尚未清理。最终清理须先完成公开Release下载安装复核，并保证正式AppData已恢复、不含未迁出的真实任务。脚本仅清工作区，不删D盘安装或AppData。
+- Windows GUI EXE --diagnose直接管道ConvertFromJson，不先赋值再解析，以免stdout管道提前关闭。正常退出用StartProcess -Wait -PassThru读取ExitCode，等进程结束；禁止强杀LightDo。
+- test-restart.ps1完整比较解析JSON的全部任务与设置，另报告SHA；格式变化不当数据丢失。本机最新多次内容和字节都保持。
+- Rust1.99.1/VS17.14.42/SDK26100/NSIS3.12，gh .tools/gh/bin/gh.exe。CARGO_TARGET_DIR=target/candidate；root app旧，root玻璃fixture最新双缓冲--fullscreen/--static。
+- 发布脚本先草稿上传/下载逐一SHA核对再公开，失败保留草稿；最小权限只有publish job contents:write。正式tag指向验收源码，不能把本地旧EXE当最终下载版验收。
+- 原始本机JSON都在local-evidence，不含任务正文的诊断可供核对；最终删除中间数据前先确认正式AppData5条及用户后续新增任务已保留。

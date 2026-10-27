@@ -2,10 +2,10 @@
   "status": "pending",
   "version": "1.0.0",
   "sourceFingerprint": null,
-  "glass": false,
+  "glass": true,
   "windowModes": false,
-  "chineseIme": false,
-  "installer": false,
+  "chineseIme": true,
+  "installer": true,
   "evidence": "docs/verification.md",
-  "note": "尚未达到正式发布门槛；禁止通过标签发布流程。"
+  "note": "既有核心验收见verification.md。用户新增可配置停靠范围，窗口项需完成本次新构建实测后重新确认；正式发布继续保持pending。"
 }
