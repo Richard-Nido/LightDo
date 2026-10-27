@@ -141,7 +141,14 @@ impl WindowState {
         if self.mode != Mode::Edge || self.phase == Phase::TrayHidden {
             return;
         }
-        if !at_edge {
+        if self.edge_dismissed {
+            // Explicit Esc/hotkey dismissal wins over the pointer still in
+            // the panel. Only a genuine departure can arm a later return.
+            if inside || at_edge {
+                self.away_since = None;
+                self.edge_since = None;
+                return;
+            }
             self.edge_dismissed = false;
         }
         let at_edge = at_edge && !self.edge_dismissed;
@@ -224,6 +231,22 @@ mod tests {
         assert_eq!(s.progress, progress);
         s.step(80.0, false);
         assert_eq!(s.progress, 1.0);
+    }
+    #[test]
+    fn explicit_dismiss_does_not_reverse_while_the_pointer_is_still_inside() {
+        let mut s = WindowState::default();
+        s.dismiss();
+        s.pointer(0, true, false, 250, 400, true);
+        assert_eq!(s.target, 0.0);
+        s.step(110.0, false);
+        s.pointer(110, true, false, 250, 400, true);
+        assert_eq!(s.target, 0.0);
+        s.step(110.0, false);
+        assert_eq!(s.phase, Phase::Hidden);
+        s.pointer(250, false, false, 250, 400, true);
+        s.pointer(300, false, true, 250, 400, true);
+        s.pointer(550, false, true, 250, 400, true);
+        assert_eq!(s.target, 1.0);
     }
     #[test]
     fn tray_and_paused_windows_do_not_poll_but_hidden_edge_still_detects_pointer() {

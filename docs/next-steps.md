@@ -1,56 +1,44 @@
 # 当前接续点
 
-完整目标仍为LightDo、本机真实验收、Windows安装包、公开正式Release和最终目录清理。用户已授权推送和正式发布。尚无正式标签/Release；验收JSON仍pending。
+完整目标：完成LightDo、本机真实验收、Windows安装包、独立公开仓库、正式标签自动公开Release、下载校验安装、最终清理。已获建仓/推送/发布授权，不重复询问产品需求。尚无正式标签或Release，验收JSON仍pending，不能宣称完成。
 
-## 当前现场（2026-10-27，任务保留补强后）
+## 最新现场（2026-10-27 09:20后）
 
-- 最新现场覆盖下方旧运行PID：目前运行candidate隔离交互实例PID38300，SHA33fe9b4dc425180ec52f495594e355900114e6a746f129b69555c25f14d42fe6。路径target/candidate/x86_64-pc-windows-msvc/release/lightdo.exe；正式安装版仍24fdab84，已正常退出。
-- 隔离目录与原始保护SHA见local-evidence/ux-fixture-current.json。目前隔离任务33条（32条种子+新增连续粘贴测试）；正式AppData仍原5条，SHA4B6A051F77A8A141CE0058F4A43AD99292F0CE41B348E8E88A6E85670E2CA945。不得把隔离清单写回正式AppData。
-- 新发现并修正滚动后Tab焦点不可见及超过底部时本帧行坐标未同步；已实际验证9000滚到末尾、Tab回第一条、Space完成/撤销原位、Ctrl+A完整高亮、连续粘贴3段、Enter新增、纯空白不新增。check仍24通过、9忽略，打包成功，当前候选安装器370996字节。
-- 当前已选中新增的“选区粘贴测试🙂”重复3次的任务，等待异步问题允许按Delete删除此单条隔离任务；来自computer-use动作时确认规则。未收到回复前不执行删除，不记PASS。之后正常退出隔离实例、安装最新候选并恢复正式5条，重新检查最新安装版重启保留。
-- 数据修复提交fb85758的CI40428648501已成功；本批滚动修正随后提交另跟CI。
+- 当前安装版1.0.0 SHA-256 7b1b879a8bff6f2a89b8ebb048f667311b43d2a5807d0bc50c22643458c5126f，路径%LOCALAPPDATA%/Programs/LightDo/lightdo.exe，PID38136，最新3次冷启动的第三个进程。
+- 当前已通过菜单实际切到Desktop（为Explorer重启测试），toolWindow=true/topmost=false、5条任务；Right偏好/Light48/350×547/CtrlAltL/自启关闭。全屏测试背景已关闭，设置已关闭。
+- 系统locked=false。Taskmgr已打开，工具操作搜索框/快捷键不可靠，没有执行资源管理器重启。已经异步请求用户手动在任务管理器Windows资源管理器上点“重新启动”，等待结果。用户操作期间暂不操作GUI；先诊断再刷新Sky。
+- 用户已确认“睡眠恢复，组件输入，桌面图标都正常”。仅记用户手测，不声称工具证明同一进程跨睡眠。
+- 用户报告重启任务不可见：原AppData仍5条未完成任务，旧版重新启动又显示。原先触发原因尚未确诊；已做读取补强，不宣称精确根因。
+- 正式AppData/LightDo/state.json仍5条任务，最新基线SHA4B6A051F77A8A141CE0058F4A43AD99292F0CE41B348E8E88A6E85670E2CA945。正在Desktop切换会改变设置SHA，后续基线应重新读当前文件，不能用旧文件覆盖。
+- 当前安装器370817字节；dist/stage与已安装EXE一致，未签名。还没有最终公开下载资产。
 
-- 用户已确认“睡眠恢复，组件输入，桌面图标都正常”。同时报告退出重开任务不可见；原AppData文件仍含5条未完成任务，旧版再次启动能显示，原先不可见触发原因尚未精确确认。
-- 已补强Known Folder固定数据目录、500ms有界共享锁重试、失败明确空态和禁写保护；设置通用页新增打开真实数据文件夹，已实际打开Explorer并看到唯一state.json。
-- 最新已安装EXE SHA为24fdab846550463d90189f1471e20c3c359e7be6de5d2368cfe585e7cf55cf5b，PID22844，08:39:45启动。33项中24通过、9忽略；候选安装器370878字节。尚无正式Release。
-- 三次实际独立冷启动PID20416/35776/22844，从TEMP工作目录均读到5条未完成任务，文件SHA不变；第三次还实际观察到五条任务显示。test-restart.ps1的首次诊断管道错误已修正，不把诊断子进程管道错误当主应用崩溃。
-- 当前Edge/Right/Light/48、350×547、Ctrl+Alt+L，自动隐藏/全屏避让开启，自启/锁定/固定展开关闭。已实际设置恢复Right，五条任务保留。
-- 新构建日常右边缘隐藏44.29秒，42个样本均隐藏，CPU0.0106%、GPU0%、工作集106.14MiB、私有73.19MiB、共享GPU88.92MiB，646句柄。之前打开过设置与系统数据目录，不与旧样本直接归因比较。
-- 为保护用户原任务，local-evidence/restart-data-protection/state-before-shutdown.json有临时验收前副本；当前原AppData完整，最终清理前以当前AppData为权威，不能用旧副本覆盖后续编辑。该副本未提交Git。
-- 无隐私背景PID33684仍在；轻待隐藏，已关闭设置和打开的数据目录窗口。后续GUI前检查锁状态并刷新Sky。
+## 最近完成
 
-## 上一批修复记录（以下旧PID和等待状态仅供历史定位）
+- Known Folder固定默认本机LightDo数据根、500ms有界共享锁重试、读取失败明确空态/禁写；设置通用页“打开LightDo数据文件夹”实际打开Explorer，看到state.json。开发覆盖必须绝对路径。dev.ps1 finally恢复旧覆盖环境，避免隔离路径泄露到后续启动。
+- 最新安装版完整退出/冷启动3次PID40356/19508/38136，从TEMP工作目录均读5条未完成，原文件SHA不变。至数据/原生输入控件创建的观测410/252/239ms，含200ms轮询及诊断子进程，不是首帧玻璃显示延迟。
+- 隔离32条任务真实滚动至末尾，修正Tab选中屏幕外首项与滚动上限当帧坐标；完成/撤销原位，完整CtrlA高亮、中文Emoji复制与连续粘贴3段、Enter新增、纯空白不新增均实际通过。
+- 用户授权只删新增的三段“选区粘贴测试🙂”这一条，实际Delete成功，33→32、目标ID消失、剩余种子ID一致，正式文件SHA未变。该授权已完成，不可扩大到其他GUI删除。
+- 列表焦点未阻止自动隐藏导致第一次Delete时窗口先隐藏，数据仍33。修正后鼠标在外面、Tab选中列表，1.3秒后仍Expanded/foreground=true。
+- Esc原被内部鼠标反向打开，已修正明确收回优先；实际鼠标在原面板[2218,637]按Esc后650ms隐藏。新增单元回归。
+- 最新检查34项中25通过、9真实桌面实验忽略；PowerShell语法/隔离清理专项/fmt/check也通过。
+- 最新安装版日常Edge/Right隐藏38.95秒，37样本全部隐藏，CPU0.0120%、GPU0%，工作集平均98.76/结束95.83MiB，私有72.02、共享GPU87.57MiB、句柄531。历史各哈希仍保留范围，不套用。
+- 前一33fe9b4d静态网格可见31.34秒CPU1.60%、GPU5.41/10.34%、工作集114.82/私有90.64/共享109.07MiB。输入焦点/桌面系统动态不能称整个系统完全静止。
+- 前两批fb85758 CI40428648501、2250a24 CI40429860882均success；最新Esc/列表焦点改动需提交并跟踪CI。
 
-- 用户解锁后，PID35024保持且实际呼出、输入与保存成功，边缘模式恢复已通过；正式AppData现在五条合成任务。
-- 之后发现并修复两个实际问题：左侧置顶面板遮挡独立设置；快速拖动时队列消费采样起点太晚。修正已检查、打包、安装并实际拖出Floating再拖回Edge，设置在Edge和Desktop均可操作。
-- 当前已安装1.0.0 SHA-256为0751214fb061fb5f8599312f13f5a8a2d96fc8d7edcf547c489453b4cb1ae945，PID36444，2026-10-27 08:18:18启动。安装路径%LOCALAPPDATA%/Programs/LightDo；数据%APPDATA%/LightDo/state.json。
-- 当前主动停留Desktop模式，Right偏好、Light/48、350×547、Ctrl+Alt+L、autostart=false、pinned=false/locked=false、fullscreen_pause=true。桌面左侧位置来自拖回左侧实测，回Edge会按Right定位。
-- 已关闭测试背景和设置窗口，向用户异步请求“实际睡眠、唤醒解锁、Desktop组件输入与桌面图标”结果。用户操作期间停止桌面输入；可做源码/CI工作。收到回复后先诊断锁定状态、刷新Sky选择。
-- 32项中23通过、9忽略；本轮check及打包成功，当前候选安装器368722字节，尚非最终公开下载资产。
+## 接下来
 
-## 本轮真实新增结果
+1. 等待Explorer重启手测结果并诊断恢复。桌面宿主失效代码会回Floating并明确提示，符合可恢复路径；不要把普通Floating假称Desktop。恢复后从菜单重新切Desktop并实际操作，再恢复Right。
+2. 必要剩余边缘真实快速掠过/返回/反向/菜单防收回、错误保存GUI提示、模式切换资源稳定性；不要对已通过菜单、IME各DPI、WinD、设置、自启登记、快捷键冲突反复询问。
+3. 完整安装GUI/卸载默认保留及主动删除/自启清理。实际GUI安装和删除需computer-use动作时确认，先保护正式AppData并准备合成卸载fixture。不要绕过test-installer.ps1的现有用户资料保护。CI静默安装/默认保留已通过，但不冒充本机GUI/主动删除。
+4. 满足关键门槛后再finalize-acceptance、release -Publish，观察正式tag Actions，下载SHA核对安装，最后实际清理target/.tools/.reference/local-evidence/dist stage与旧版资产。现在没有Release不能给虚假链接。
+5. 一物理显示器无法实测外接断开/主屏变化，如实列限制；本机受测Win11 26H2不外推全部Win11。
 
-- 无边框全屏受控背景，鼠标停留右边缘仍隐藏；快捷键主动呼出且foreground=true、背景就绪，可输入。
-- c3edc3d2构建解锁/使用后右边缘隐藏50.78秒：47个窗口样本均隐藏，CPU0.0046%、GPU0%，工作集92.21MiB、私有71.22MiB、共享GPU102.11MiB。不能套用为后续修复哈希的实测。
-- 左侧实际非激活展开[12,390,537,1210]；移开收回；此左侧测试临时关闭全屏避让，测试后已恢复。
-- 最新修正版实际拖出[185,390,710,1210] Floating/topmost=false，再拖回[12,390,537,1210] Edge/topmost=true，同一面板/五条任务，docs/images/left-redock-current.png。
-- 菜单实际打开后正常--shutdown在0.352秒内结束，任务文件哈希不变（cd858b3d构建）。最初沿用PowerShell旧LASTEXITCODE误报，正确Start-Process -Wait复测通过，不是产品退出失败。
-- 两轮同版本覆盖安装均保留状态逐字节相同，新安装重启恢复五条任务。
+## 数据与工具保护
 
-## 继续完成
-
-1. 睡眠/组件输入/桌面图标已由用户手测通过，不再重复询问。继续剩余真实交互和安装；实际自动操作前检查锁状态。
-2. 剩余真实交互：当前构建选区/复制连续粘贴/空白/删除/多任务滚动，快速掠过/返回/反向/关联菜单，Explorer重启和Desktop恢复。不要重问已确认产品需求或已测菜单/快捷键。
-3. 完整安装GUI/主动删除数据及卸载自启清理。操作之前保护正式AppData五条合成任务；GUI删除/安装遵循computer-use的动作时确认规则，非UI已授权安装不额外询问。
-4. 最新构建可见静态与边缘隐藏性能、启动时间，最终关键交互回归。单物理显示器不伪造多屏；本机只测Win11 26H2。
-5. 完成关键验收后才finalize-acceptance并release -Publish；标签Actions先构建检查，草稿上传并下载校验所有六项资产后公开。之后最终下载校验安装，实际清理。现在不能写“全部完成”。
-
-## 工具与保护
-
-- Sky通过mcp__node_repl__js的@oai/sky。禁止Windows键、Codex/认证/安全UI；物理Esc或锁屏立即停止输入。
-- 所有持久变量使用globalThis读写，避免旧顶层fs/sw/ss等遮蔽。从list_windows返回对象唯一选择，每次用state.window更新；切窗口后刷新。原生下拉优先实际点击，set_value可能不触发CBN。
-- get_window_state有时UIA树落后一帧，原生页切换后重新观察；设置模式切换后截图可能包含主面板区域和第二张设置截图，不能误判设置消失。
-- 系统原生GUI EXE在PowerShell中不要沿用旧LASTEXITCODE；需要退出码时Start-Process -Wait -PassThru，读取ExitCode。禁止强杀LightDo；正常--shutdown后等待。
-- 不用PowerShell FindWindow(class,$null)断言窗口不存在。需要只读诊断时过滤本项目PID。
-- Rust1.99.1/VS17.14.42/SDK10.0.26100/NSIS3.12；gh在.tools/gh/bin/gh.exe。构建CARGO_TARGET_DIR=工作区/target/candidate。root app仍旧；root玻璃背景fixture最新、支持--fullscreen/--static、双缓冲整帧绘制。
-- 清理脚本隔离合成测试和CI已通过，本项目实际清理未执行。仅在最终Release下载安装验证后运行，保留源码、Git、正式文档、当前版本交付资产及项目外用户数据。
+- 正式数据目录%APPDATA%/LightDo，当前全部5条需保留。临时local-evidence/restart-data-protection/state-before-shutdown.json只为验收保护，旧副本不能覆盖后续编辑。
+- 隔离UX目录信息local-evidence/ux-fixture-current.json，33→32删除完成、pendingDeleteCompleted=true；隔离实例已正常退出，不得把其任务复制回正式目录。最终清理会删除这些中间数据。
+- Sky经mcp__node_repl__js的@oai/sky。只globalThis读写，避免旧顶层fs/sw/ss遮蔽。从list_windows唯一返回对象选择，每次用state.window。原生菜单/设置树常落后一帧，刷新后再操作；截图可能含主窗+第二张设置，不能误判。
+- 禁止Windows键、Codex/认证/安全UI；物理Esc或锁定即停止。任务管理器尝试搜索不成功，未改系统进程。已请求用户做一次最小操作。
+- Windows GUI EXE诊断必须直接管道ConvertFromJson，先赋值再解析可能不等待进程而关闭stdout。退出/启动需要码时StartProcess -Wait -PassThru读取ExitCode，不沿用旧LASTEXITCODE。禁止强杀LightDo。
+- 发布脚本已先草稿上传/下载逐个SHA核对再公开，失败保留草稿。验收JSON与指纹阻止提前正式tag。源版本1.0.0候选。
+- Rust1.99.1/VS17.14.42/SDK26100/NSIS3.12，gh .tools/gh/bin/gh.exe。CARGO_TARGET_DIR=工作区/target/candidate；root app旧，root玻璃fixture最新支持--fullscreen/--static。

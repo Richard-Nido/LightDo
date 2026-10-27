@@ -1250,6 +1250,7 @@ impl App {
                 || settings_ui::is_open()
                 || self.moving
                 || COMPOSING.with(Cell::get)
+                || (active && unsafe { GetFocus() } == self.hwnd && self.selected.is_some())
                 || (active && unsafe { GetFocus() } == self.input)
                 || (active && !self.inline.is_invalid() && unsafe { GetFocus() } == self.inline);
             let primary = platform::primary().rcMonitor;

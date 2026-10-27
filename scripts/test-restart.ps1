@@ -28,6 +28,7 @@ Stop-Normally
 $baselineHash = (Get-FileHash -LiteralPath $statePath).Hash
 for ($cycle=1; $cycle -le $Cycles; $cycle++) {
     # Cold starts from a different working directory must read the same folder.
+    $startupWatch = [Diagnostics.Stopwatch]::StartNew()
     $process = Start-Process -FilePath $Executable -WorkingDirectory ([IO.Path]::GetTempPath()) -PassThru
     $deadline = (Get-Date).AddSeconds(12)
     $diagnostic = $null
@@ -40,12 +41,12 @@ for ($cycle=1; $cycle -le $Cycles; $cycle++) {
     if ($diagnostic.data.readable -ne $true -or $diagnostic.data.tasks -ne $expectedTasks -or $diagnostic.data.unfinished -ne $expectedUnfinished) {
         throw "第${cycle}次读取结果不符；保留现场，不覆盖任务文件。"
     }
-    $records += [pscustomobject]@{cycle=$cycle;pid=$process.Id;tasks=$diagnostic.data.tasks;unfinished=$diagnostic.data.unfinished;readable=$diagnostic.data.readable}
+    $records += [pscustomobject]@{cycle=$cycle;pid=$process.Id;tasks=$diagnostic.data.tasks;unfinished=$diagnostic.data.unfinished;readable=$diagnostic.data.readable;dataAndInputReadyMilliseconds=$startupWatch.Elapsed.TotalMilliseconds}
     if ($cycle -lt $Cycles) {
         Stop-Normally
         if ((Get-FileHash -LiteralPath $statePath).Hash -ne $baselineHash) { throw '正常退出改变了原始状态文件；停止并保留现场。' }
     }
 }
 if ((Get-FileHash -LiteralPath $statePath).Hash -ne $baselineHash) { throw '重启后状态文件不一致；保留现场。' }
-$result = [ordered]@{binarySha256=(Get-FileHash $Executable).Hash.ToLowerInvariant();cycles=$Cycles;separateProcesses=$records;foreignWorkingDirectory=$true;stateHashUnchanged=$true;taskTextLogged=$false;guiObserved=$false}
+$result = [ordered]@{binarySha256=(Get-FileHash $Executable).Hash.ToLowerInvariant();cycles=$Cycles;separateProcesses=$records;startupTiming='Includes process launch, 200ms polling and diagnostic subprocess; data and native input created, not first visible glass frame';foreignWorkingDirectory=$true;stateHashUnchanged=$true;taskTextLogged=$false;guiObserved=$false}
 $result | ConvertTo-Json -Depth 5 | Tee-Object -FilePath (Join-Path $script:ProjectRoot 'local-evidence/restart-retention.json')
