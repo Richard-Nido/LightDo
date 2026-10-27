@@ -1,15 +1,15 @@
-# 交付收尾
+# 已完成交付与后续维护
 
-正式v1.0.0已公开，源码标签提交c2c476d9f1d2bfdca00f71faf33af19a0705b1b6，标签工作流40447543051的build/publish均成功。Release draft=false/prerelease=false，6项资产已重新下载并逐项匹配GitHubAPI SHA-256及SHA256SUMS。
+正式v1.0.0已公开，源码标签提交c2c476d9f1d2bfdca00f71faf33af19a0705b1b6。标签工作流40447543051的build/publish均成功，Release为公开正式版，6项资产已下载并核对GitHub摘要和校验文件。发布记录见[release-validation.json](release-validation.json)。
 
-最终公开EXE安装包371488字节，SHA831e093c8d9f57dc26385bacdba25ea8a1b751035af9540abb62674be127a576。已使用该下载包安装D:\LightDo，应用SHA9a83383752ac6c4019c3e2bf9c4ab9b48601cf6ea36fd9fc69367de023aca8a2，1.0.0/NotSigned，3次冷启动保留任务/设置，用户明确“正式版正常！”确认玻璃、中文输入和数值8。当前6条任务，原5个任务ID仍在，新增正文仅留本机。
+公开下载包已安装在D:\LightDo，用户确认玻璃、中文输入、任务与设置正常。当前6条正式任务保留，停靠范围保留用户值8、停靠侧保留用户后续选择Left；新用户默认Right、范围16。任务正文只留本机。
 
-当前源码默认Right、停靠范围16；用户自定义8已保留。安装准备曾恢复Right，用户后续手动停靠Left，保留其当前选择，不强制覆盖。最终用户关闭面板为TrayHidden，测量明确属于托盘隐藏，不能冒充日常边缘自动隐藏。各构建/场景记录见performance.md，代表测量JSON已移至docs/performance-records。
+人工结束隔离进程后，12条已保存的合成任务完整恢复。结束回调未被观测，不将其扩大为写入中崩溃测试。隔离实例已正常退出，临时目录已删除，正式6条重新启动且原文件SHA不变。
 
-所有临时AppData保护目录均已还原，原有及新增任务均在正式%APPDATA%/LightDo。不要从local-evidence旧副本覆盖当前数据。用户要求避免Computer Use，已经采用CLI/文件/诊断与人工验收，未再恢复自动桌面控制。
+清理脚本已实际删除target、.tools、.reference、local-evidence、dist/stage和旧0.1.0资产。工作目录保留源码/Git、正式文档/图片及dist当前EXE、许可ZIP、SHA256SUMS这3项交付物；D盘应用与正式数据未受影响，无遗留保护目录。已核对安装包与公开资产摘要一致。
 
-唯一剩余：实际工作目录清理、清理后校验和最终完成审计。请先提交当前正式文档/JSON，再运行scripts/clean-delivery.ps1 -Execute -IncludeTestData；删除target/.tools/.reference/local-evidence/dist/stage及旧0.1资产，保留源码/Git、正式文档/图片和dist当前公开EXE/许可ZIP/SHA。不得删除D盘安装、AppData或其他项目。
+后续修改按[开发与发布](releasing.md)：修改源码及版本说明，使用Prepare准备1.0.1，完成实际验收后finalize，再Publish触发新标签自动构建和公开发布。已公开的1.0.0不改写；main中的后续提交仅补充本次交付记录。不要把历史构建性能或截图扩大为新版本的直接实测。
 
-GitHub CLI已从项目临时目录迁到%LOCALAPPDATA%/Programs/GitHub CLI/gh.exe，原二进制校验一致、原Richard-Nido登录保留、原本引用本项目缓存的两个Git helper路径已更新，用户PATH已加入。清理后请使用稳定CLI路径；不要使用即将删除的.tools/gh。
+GitHub CLI现位于%LOCALAPPDATA%/Programs/GitHub CLI/gh.exe，登录与Git凭据助手已保留；项目缓存清理后仍可推送。新终端读取更新后的用户PATH。用户要求避免Computer Use，后续优先文件、命令行与诊断，必须的桌面交互再给简短人工清单。
 
-清理后更新release-validation.json的cleanup.executed、verification和清单，提交推送；核对git status干净、所列中间目录及旧资产不存在、当前dist SHA正确、D盘应用及AppData任务数/哈希未受影响。源标签保持不改写，main后续只有交付记录推进。然后给用户仓库/Release/EXE链接、本机路径/版本/源码提交/安装包SHA、三模式图和真实测试范围，确实完成后update_goal complete。
+单物理显示器、单一Windows构建、未签名等限制见[验收记录](verification.md)，各场景资源数据见[performance.md](performance.md)。

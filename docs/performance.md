@@ -54,7 +54,7 @@
 - 托盘隐藏使用独立状态停用边缘检测；边缘自动隐藏保留80ms鼠标检测，动画才使用16ms定时器，间隔不变时不重复重设。
 - Scene休眠注销缩略图、释放读取结果并关闭到达帧；保留帧池供下次复用，避免反复创建池造成驱动分配积累。隐藏后不处理背景图像，5秒后释放镜头/表面并调用DXGI Trim。
 - 隐藏入口和排队帧通知均检查状态，避免后台重建活动捕获；图形设备重建/窗口重建/退出仍销毁旧场景。
-- 原始记录在本机被Git忽略的local-evidence/perf-*.json，含二进制哈希、前后诊断及窗口样本计数，不含任务正文或背景像素。计数器不可用时保留错误，不以0代替缺失数据。
+- 原始记录曾位于被Git忽略的local-evidence/perf-*.json；交付时代表测量已保留到docs/performance-records，其他中间日志已清理。记录含二进制哈希、前后诊断及窗口样本计数，不含任务正文或背景像素。计数器不可用时保留错误，不以0代替缺失数据。
 
 ```powershell
 .\scripts\measure-runtime.ps1 -Seconds 60 -Name edge-hidden -IncludeGpu -ExpectedState Hidden -Scenario EdgeAutoHidden -StateFile "$env:APPDATA/LightDo/state.json"

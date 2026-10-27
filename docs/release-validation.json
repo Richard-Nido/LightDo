@@ -80,7 +80,37 @@
     "userConfirmedGlassChineseImeAndSetting": true
   },
   "cleanup": {
-    "executed": false
+    "executed": true,
+    "verifiedDate": "2026-10-27",
+    "removedDirectories": ["target", ".tools", ".reference", "local-evidence", "dist/stage"],
+    "removedObsoleteAssets": ["LightDo_0.1.0_x64-setup.exe", "LightDo_0.1.0_licenses.zip"],
+    "remainingIntermediateDirectories": [],
+    "retainedDistAssets": ["LightDo_1.0.0_x64-setup.exe", "LightDo_1.0.0_licenses.zip", "SHA256SUMS.txt"],
+    "userDataUnchanged": true,
+    "installedApplicationUnchanged": true,
+    "installerUnchanged": true,
+    "temporaryTestFixtureRemoved": true,
+    "remainingProtectedDataDirectories": 0
+  },
+  "manualProcessTerminationRecovery": {
+    "date": "2026-10-27",
+    "binarySha256": "9a83383752ac6c4019c3e2bf9c4ab9b48601cf6ea36fd9fc69367de023aca8a2",
+    "method": "User ended isolated PID 27200 in Task Manager; process absence independently checked",
+    "isolatedTaskCount": 12,
+    "isolatedUnfinishedCount": 8,
+    "recoveryPid": 35944,
+    "readableAfterRestart": true,
+    "taskIdsOrderTextAndStatusUnchanged": true,
+    "seedBytesUnchanged": false,
+    "seedByteDifference": "Window coordinates were persisted; task content was identical. Original seed byte equality was rejected, not reported as passed.",
+    "terminationCallbacksObserved": false,
+    "scope": "Recovery of already saved tasks after manual process termination; not a write-in-progress crash or proof that shutdown callbacks were bypassed",
+    "formalTasksRestored": 6,
+    "formalSnapDistance": 8,
+    "formalSide": "Left",
+    "formalStateHashUnchanged": true,
+    "temporaryFixtureRemoved": true,
+    "taskTextPublished": false
   },
   "runtimePayload": {
     "directImportedDlls": [
