@@ -1546,8 +1546,11 @@ impl App {
         }
         let limit = (y + self.scroll - h + 55.0).max(0.0);
         if self.scroll > limit {
+            let offset = self.scroll - limit;
+            for row in &mut rows {
+                row.top += offset;
+            }
             self.scroll = limit;
-            self.dirty = true;
         }
         self.rows = rows;
         if self.surface.is_none() {
@@ -2037,6 +2040,7 @@ impl App {
             KEY_NAV => {
                 if let Some(first) = self.model.todos.first() {
                     self.selected = Some(first.id.clone());
+                    self.scroll = 0.0;
                     unsafe {
                         let _ = SetFocus(Some(self.hwnd));
                     }
